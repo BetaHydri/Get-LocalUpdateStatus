@@ -166,4 +166,3 @@ function Get-LocalUpdateStatus {
     
   $MyUpdates 
 }
-Get-LocalUpdateStatus -ComputerName localhost -UpdateSearchFilter 'IsHidden=0 and IsInstalled=1'  
