@@ -11,22 +11,24 @@
 
 .COPYRIGHT 2021
 
-.TAGS PSScript
+.TAGS Updates, WindowsUpdates
 
-.LICENSEURI 
+.LICENSEURI
 
-.PROJECTURI 
+.PROJECTURI
 
-.ICONURI 
+.ICONURI
 
 .EXTERNALMODULEDEPENDENCIES 
 
-.REQUIREDSCRIPTS 
+.REQUIREDSCRIPTS
 
-.EXTERNALSCRIPTDEPENDENCIES 
+.EXTERNALSCRIPTDEPENDENCIES
 
 .RELEASENOTES
 
+
+.PRIVATEDATA
 
 #>
 
@@ -36,6 +38,7 @@
  Enumerates missing or Installed Windows Updates and returns an array of Objects with updates 
 
 #> 
+
 
 function Get-LocalUpdateStatus { 
   #requires -Version 4
