@@ -37,9 +37,6 @@
 
 #> 
 
-Param()
-
-
 function Get-LocalUpdateStatus { 
   #requires -Version 4
   <#
