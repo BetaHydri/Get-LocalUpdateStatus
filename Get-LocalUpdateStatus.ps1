@@ -1,7 +1,7 @@
 <#
 PSScriptInfo
 
-.VERSION 1.6.0
+.VERSION 1.5.0
 
 .GUID 4b937790-b06b-427f-8c1f-565030ae0227
 
@@ -11,7 +11,7 @@ PSScriptInfo
 
 .COPYRIGHT 2025
 
-.TAGS Updates, WindowsUpdates, Download, Export, Import, WSUS, Offline, BatchInstall, AirGapped
+.TAGS Updates, WindowsUpdates, Download, Export, Import, WSUS, Offline, BatchInstall
 
 .DESCRIPTION 
 Enumerates missing or installed Windows Updates and returns an array of objects with update details. 
@@ -19,7 +19,6 @@ Features enhanced batch download-first-then-install workflow with comprehensive 
 Supports exporting scan results and importing them on other machines for download.
 Supports WSUS offline scanning using wsusscn2.cab for air-gapped environments.
 Includes interactive installation confirmation and detailed batch processing summaries.
-NEW: Offline installation mode for air-gapped environments - install transferred update files based on original scan results.
 #>
 
 # Helper function to install updates
@@ -467,27 +466,6 @@ function Get-LocalUpdateStatus {
     [Parameter(Mandatory = $true, ParameterSetName = 'WSUSOfflineScan')]
     [Switch]$WSUSOfflineScan,
 
-    [Parameter(Mandatory = $true, ParameterSetName = 'OfflineInstall')]
-    [ValidateScript({
-        if (-not (Test-Path $_ -PathType Leaf)) {
-          throw "Scan report file '$_' does not exist."
-        }
-        return $true
-      })]
-    [System.String]$ScanReport,
-
-    [Parameter(Mandatory = $true, ParameterSetName = 'OfflineInstall')]
-    [ValidateScript({
-        if (-not (Test-Path $_ -PathType Container)) {
-          throw "Update files directory '$_' does not exist or is not a directory."
-        }
-        return $true
-      })]
-    [System.String]$UpdateFilesPath,
-
-    [Parameter(Mandatory = $false, ParameterSetName = 'OfflineInstall')]
-    [Switch]$OfflineInstallOnly,
-
     [Parameter(Position = 1, Mandatory = $false, ParameterSetName = 'WSUSOfflineScan')]
     [ValidateScript({
         if ($_ -and -not (Test-Path $_ -PathType Leaf)) {
@@ -512,7 +490,7 @@ function Get-LocalUpdateStatus {
   }
 
   # Validate parameter combinations
-  if ($InstallUpdates -and -not $DownloadUpdates -and $PSCmdlet.ParameterSetName -ne 'OfflineInstall') {
+  if ($InstallUpdates -and -not $DownloadUpdates) {
     Write-Error "InstallUpdates requires DownloadUpdates to be enabled. Use both -DownloadUpdates and -InstallUpdates parameters."
     return
   }
