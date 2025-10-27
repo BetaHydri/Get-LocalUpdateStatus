@@ -348,20 +348,39 @@ function Get-LocalUpdateStatus {
       
       # For offline scanning, we need to set the server selection to use the local .cab file
       $updateServiceManager = New-Object -ComObject Microsoft.Update.ServiceManager
-      $updateService = $updateServiceManager.AddScanPackageService("Offline Sync Service", $scanFile, 1)
-      $searcher.ServerSelection = 3  # ssOthers
-      $searcher.ServiceID = $updateService.ServiceID
+      Write-Host "Adding scan package service for file: $scanFile" -ForegroundColor Gray
+      
+      # Try different approaches for the scan package service
+      try {
+        $updateService = $updateServiceManager.AddScanPackageService("Offline Sync Service", $scanFile, 1)
+        Write-Host "Service ID: $($updateService.ServiceID)" -ForegroundColor Gray
+        $searcher.ServerSelection = 3  # ssOthers
+        $searcher.ServiceID = $updateService.ServiceID
+      }
+      catch {
+        Write-Host "AddScanPackageService failed, trying alternative approach..." -ForegroundColor Yellow
+        # Alternative: Try using the scan package directly
+        $updateService = $updateServiceManager.AddScanPackageService("OfflineSyncService", $scanFile)
+        $searcher.ServerSelection = 3  # ssOthers  
+        $searcher.ServiceID = $updateService.ServiceID
+      }
       
       # Perform offline scan with specified filter criteria
       Write-Host "Performing offline scan with filter: $UpdateSearchFilter..." -ForegroundColor Yellow
-      $results = $searcher.Search($UpdateSearchFilter)
-      
-      Write-Host "Found $($results.Updates.Count) updates via offline scan" -ForegroundColor Green
+      try {
+        $results = $searcher.Search($UpdateSearchFilter)
+        Write-Host "Found $($results.Updates.Count) updates via offline scan" -ForegroundColor Green
+      }
+      catch {
+        Write-Error "Error during offline scan: $($_.Exception.Message)"
+        Write-Host "Debug: Searcher Online = $($searcher.Online), ServerSelection = $($searcher.ServerSelection), ServiceID = $($searcher.ServiceID)" -ForegroundColor Red
+        # Clean up and exit
+        try { $updateServiceManager.RemoveService($updateService.ServiceID) } catch {}
+        return
+      }
       
       # Clean up the temporary service
       $updateServiceManager.RemoveService($updateService.ServiceID)
-      
-      Write-Host "Found $($results.Updates.Count) updates via offline scan" -ForegroundColor Green
       
       # Process results similar to normal scan
       $MyUpdates = @()

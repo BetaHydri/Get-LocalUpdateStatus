@@ -545,10 +545,47 @@ The script automatically detects and displays the Windows Update source:
 
 ## Version Information
 
-- **Version:** 1.3.0
+- **Version:** 1.3.1
 - **Author:** Jan Tiedemann
-- **Copyright:** 2021
+- **Copyright:** 2021-2025
 - **GUID:** 4b937790-b06b-427f-8c1f-565030ae0227
+- **Last Updated:** October 2025
+
+### Recent Updates (v1.3.1)
+- Fixed COM object creation for improved compatibility
+- Added enhanced error handling for WSUS offline scan
+- Improved debugging and troubleshooting capabilities
+- Added comprehensive troubleshooting documentation
+- Enhanced SSL/TLS support for reliable downloads
+
+## Quick Reference
+
+### Most Common Commands
+
+```powershell
+# Basic scan for missing updates
+Get-LocalUpdateStatus -UpdateSearchFilter "IsInstalled=0"
+
+# Scan and download missing updates
+Get-LocalUpdateStatus -UpdateSearchFilter "IsInstalled=0" -DownloadUpdates -DownloadPath "C:\Temp"
+
+# WSUS offline scan (run as Administrator)
+Get-LocalUpdateStatus -WSUSOfflineScan -WSUSScanFile "C:\Path\To\wsusscn2.cab" -UpdateSearchFilter "IsInstalled=0"
+
+# Export scan results for air-gapped systems
+Get-LocalUpdateStatus -UpdateSearchFilter "IsInstalled=0" -ExportReport "C:\Temp\UpdateReport"
+
+# Import and process exported results
+Get-LocalUpdateStatus -ImportReport "C:\Temp\UpdateReport.xml" -DownloadUpdates -DownloadPath "C:\Updates"
+```
+
+### Quick Troubleshooting Checklist
+
+1. ✅ **Run PowerShell as Administrator**
+2. ✅ **Use absolute paths for wsusscn2.cab file**
+3. ✅ **Verify wsusscn2.cab file is valid (100-200MB)**
+4. ✅ **Check Windows Update service is running**
+5. ✅ **Ensure internet connectivity for downloads**
 
 ## Notes
 
@@ -582,3 +619,93 @@ The script automatically detects and displays the Windows Update source:
 - **Compatible with all other features (export, download, etc.)**
 - **wsusscn2.cab file size is typically 100-200 MB**
 - **Enhanced SSL/TLS handling** for reliable downloads from Microsoft servers
+
+## Troubleshooting
+
+### Common Issues and Solutions
+
+#### WSUS Offline Scan Returns 0 Updates
+
+**Problem:** WSUS offline scan shows "Found 0 updates" even when updates should be available.
+
+**Possible Causes and Solutions:**
+
+1. **Administrator Rights Required**
+   ```
+   Error: "This script needs to be run As Admin"
+   ```
+   - **Solution:** Run PowerShell as Administrator
+   - Right-click PowerShell and select "Run as Administrator"
+
+2. **Invalid or Corrupted wsusscn2.cab File**
+   - **Solution:** Download a fresh copy of wsusscn2.cab from Microsoft
+   ```powershell
+   # Use the built-in download feature
+   Get-LocalUpdateStatus -WSUSOfflineScan -DownloadWSUSScanFile -WSUSScanFileDownloadPath C:\Temp
+   ```
+
+3. **File Path Issues**
+   - **Problem:** Relative paths may not work correctly with COM objects
+   - **Solution:** Use absolute paths for wsusscn2.cab
+   ```powershell
+   # Instead of: .\wsusscn2.cab
+   # Use: C:\Full\Path\To\wsusscn2.cab
+   Get-LocalUpdateStatus -WSUSOfflineScan -WSUSScanFile "C:\Users\Administrator\Downloads\wsusscn2.cab"
+   ```
+
+4. **Outdated wsusscn2.cab File**
+   - **Problem:** Old scan file may not contain recent update definitions
+   - **Solution:** Download the latest wsusscn2.cab from Microsoft (typically 100-200MB)
+   - The scan file is regularly updated by Microsoft with new security definitions
+
+5. **COM Object Registration Issues**
+   - **Solution:** Try running Windows Update troubleshooter or restart Windows Update service
+   ```powershell
+   Stop-Service wuauserv
+   Start-Service wuauserv
+   ```
+
+#### Download Issues
+
+**Problem:** SSL/TLS errors when downloading updates or wsusscn2.cab
+
+**Solutions:**
+- The script includes enhanced SSL/TLS handling with automatic protocol fallback
+- Ensure Windows is updated with latest security protocols
+- Check corporate firewall/proxy settings
+
+#### Permission Issues
+
+**Problem:** Access denied errors when creating directories or writing files
+
+**Solutions:**
+- Run PowerShell as Administrator
+- Ensure write permissions to download/export directories
+- Use locations where the user has full control (e.g., C:\Temp instead of system directories)
+
+#### Remote Computer Access
+
+**Problem:** Cannot connect to remote computers
+
+**Solutions:**
+- Ensure WinRM is enabled: `Enable-PSRemoting -Force`
+- Verify firewall settings allow WinRM traffic
+- Confirm administrative access to target computers
+- Test connectivity: `Test-WSMan -ComputerName TargetServer`
+
+### Debug Testing
+
+If WSUS offline scan continues to return 0 updates, use the included test script:
+
+```powershell
+.\Test-WSUSOfflineScan.ps1 -WSUSScanFile "C:\Path\To\wsusscn2.cab" -UpdateSearchFilter "IsInstalled=0"
+```
+
+This test script provides detailed debug output to help identify the specific issue.
+
+### Known Limitations
+
+- **WSUS offline scan requires the exact Microsoft wsusscn2.cab file format**
+- **Large wsusscn2.cab files (>100MB) may take several minutes to process**
+- **Some corporate environments may block COM object access for security**
+- **Remote WSUS offline scanning is not supported (file must be local)**
