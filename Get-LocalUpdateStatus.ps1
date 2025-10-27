@@ -88,7 +88,108 @@ function Invoke-UpdateInstallation {
           # DISM exit code 2: Invalid command line or access denied
           Write-Host "  DISM failed (exit code 2: Invalid command or access denied), trying alternative method..." -ForegroundColor Yellow
           
-          # Try using expand command as fallback for certain .cab files
+          # Special handling for Azure Connected Machine Agent
+          if ($Title -like "*AzureConnectedMachineAgent*" -or $fileName -like "*azureconnectedmachineagent*") {
+            Write-Host "  Azure Connected Machine Agent detected - using specialized extraction..." -ForegroundColor Cyan
+            
+            # Try using makecab/extract with different parameters for Azure agent
+            try {
+              $tempDir = Join-Path $env:TEMP "AzureAgent_$([System.Guid]::NewGuid().ToString('N')[0..7] -join '')"
+              New-Item -Path $tempDir -ItemType Directory -Force | Out-Null
+              
+              Write-Host "  Extracting Azure Connected Machine Agent package..." -ForegroundColor Gray
+              
+              # Try different extraction methods for this specific agent
+              $extractSuccess = $false
+              
+              # Method 1: expand.exe with verbose extraction
+              $expandProcess = Start-Process -FilePath 'expand.exe' -ArgumentList @("-F:*", $FilePath, $tempDir, "-R") -Wait -PassThru -NoNewWindow
+              if ($expandProcess.ExitCode -eq 0) {
+                $extractSuccess = $true
+                Write-Host "  Extraction successful with expand.exe" -ForegroundColor Green
+              }
+              
+              # Method 2: Try extrac32.exe if expand failed
+              if (-not $extractSuccess) {
+                Write-Host "  Trying alternative extraction with extrac32.exe..." -ForegroundColor Gray
+                $extrac32Process = Start-Process -FilePath 'extrac32.exe' -ArgumentList @("/Y", "/E", $FilePath, $tempDir) -Wait -PassThru -NoNewWindow
+                if ($extrac32Process.ExitCode -eq 0) {
+                  $extractSuccess = $true
+                  Write-Host "  Extraction successful with extrac32.exe" -ForegroundColor Green
+                }
+              }
+              
+              if ($extractSuccess) {
+                # Look for any executable content
+                Write-Host "  Searching for installable content..." -ForegroundColor Gray
+                $allFiles = Get-ChildItem -Path $tempDir -Recurse -File
+                Write-Host "  Found $($allFiles.Count) files in extracted content:" -ForegroundColor Gray
+                foreach ($file in $allFiles) {
+                  Write-Host "    - $($file.Name) ($($file.Extension))" -ForegroundColor DarkGray
+                }
+                
+                # Try to find and install any executable content
+                $installSuccess = $false
+                
+                # Look for .exe files first
+                $exeFiles = $allFiles | Where-Object { $_.Extension -eq '.exe' }
+                foreach ($exeFile in $exeFiles) {
+                  Write-Host "  Attempting to install: $($exeFile.Name)" -ForegroundColor Yellow
+                  try {
+                    $exeProcess = Start-Process -FilePath $exeFile.FullName -ArgumentList @('/quiet', '/norestart') -Wait -PassThru -NoNewWindow
+                    if ($exeProcess.ExitCode -eq 0 -or $exeProcess.ExitCode -eq 3010) {
+                      $installSuccess = $true
+                      Write-Host "  Installation successful via extracted .exe: $($exeFile.Name)" -ForegroundColor Green
+                      break
+                    }
+                  }
+                  catch {
+                    Write-Host "  Failed to execute $($exeFile.Name): $($_.Exception.Message)" -ForegroundColor Red
+                  }
+                }
+                
+                # If no .exe worked, try .msi files
+                if (-not $installSuccess) {
+                  $msiFiles = $allFiles | Where-Object { $_.Extension -eq '.msi' }
+                  foreach ($msiFile in $msiFiles) {
+                    Write-Host "  Attempting to install MSI: $($msiFile.Name)" -ForegroundColor Yellow
+                    try {
+                      $msiProcess = Start-Process -FilePath 'msiexec.exe' -ArgumentList @('/i', $msiFile.FullName, '/quiet', '/norestart', 'REBOOT=ReallySuppress') -Wait -PassThru -NoNewWindow
+                      if ($msiProcess.ExitCode -eq 0 -or $msiProcess.ExitCode -eq 3010 -or $msiProcess.ExitCode -eq 1638) {
+                        $installSuccess = $true
+                        Write-Host "  Installation successful via extracted .msi: $($msiFile.Name)" -ForegroundColor Green
+                        break
+                      }
+                    }
+                    catch {
+                      Write-Host "  Failed to execute $($msiFile.Name): $($_.Exception.Message)" -ForegroundColor Red
+                    }
+                  }
+                }
+                
+                Remove-Item -Path $tempDir -Recurse -Force -ErrorAction SilentlyContinue
+                
+                if ($installSuccess) {
+                  return $true
+                }
+                else {
+                  Write-Host "  Azure Connected Machine Agent installation failed via all extraction methods" -ForegroundColor Red
+                  return $false
+                }
+              }
+              else {
+                Write-Host "  Failed to extract Azure Connected Machine Agent package" -ForegroundColor Red
+                Remove-Item -Path $tempDir -Recurse -Force -ErrorAction SilentlyContinue
+                return $false
+              }
+            }
+            catch {
+              Write-Host "  Azure Connected Machine Agent specialized installation failed: $($_.Exception.Message)" -ForegroundColor Red
+              return $false
+            }
+          }
+          
+          # Standard fallback method for other .cab files
           try {
             $tempDir = Join-Path $env:TEMP "CabExtract_$([System.Guid]::NewGuid().ToString('N')[0..7] -join '')"
             New-Item -Path $tempDir -ItemType Directory -Force | Out-Null
