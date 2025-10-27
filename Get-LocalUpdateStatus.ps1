@@ -530,7 +530,23 @@ function Get-LocalUpdateStatus {
         $MyUpdates = @()
         foreach ($update in $importedData) {
           if ($update.DownloadURL) {
-            $update | Add-Member -MemberType NoteProperty -Name NeedsDownload -Value $true -Force
+            # Check if file already exists in download directory
+            $fileName = [System.IO.Path]::GetFileName($update.DownloadURL)
+            $fullPath = Join-Path $DownloadPath $fileName
+            
+            if (Test-Path $fullPath) {
+              # File already exists - set properties for installation
+              $existingSize = (Get-Item $fullPath).Length
+              $update | Add-Member -MemberType NoteProperty -Name NeedsDownload -Value $false -Force
+              $update | Add-Member -MemberType NoteProperty -Name DownloadSuccess -Value $true -Force
+              $update | Add-Member -MemberType NoteProperty -Name DownloadedFilePath -Value $fullPath -Force
+              $update | Add-Member -MemberType NoteProperty -Name DownloadedFileSize -Value $existingSize -Force
+              $update | Add-Member -MemberType NoteProperty -Name DownloadReason -Value "File already existed" -Force
+            }
+            else {
+              # File needs to be downloaded
+              $update | Add-Member -MemberType NoteProperty -Name NeedsDownload -Value $true -Force
+            }
           }
           else {
             $update | Add-Member -MemberType NoteProperty -Name DownloadSuccess -Value $false -Force
