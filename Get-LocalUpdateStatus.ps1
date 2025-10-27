@@ -332,6 +332,8 @@ function Get-LocalUpdateStatus {
       return
     }
     
+    # Resolve to absolute path to ensure COM objects can find the file
+    $scanFile = Resolve-Path $scanFile | Select-Object -ExpandProperty Path
     Write-Host "Using WSUS scan file: $scanFile" -ForegroundColor White
     
     try {
