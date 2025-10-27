@@ -1,7 +1,7 @@
 <#
 PSScriptInfo
 
-.VERSION 1.4.0
+.VERSION 1.5.0
 
 .GUID 4b937790-b06b-427f-8c1f-565030ae0227
 
@@ -9,15 +9,16 @@ PSScriptInfo
 
 .COMPANYNAME Jan Tiedemann
 
-.COPYRIGHT 2021
+.COPYRIGHT 2025
 
-.TAGS Updates, WindowsUpdates, Download, Export, Import, WSUS, Offline
+.TAGS Updates, WindowsUpdates, Download, Export, Import, WSUS, Offline, BatchInstall
 
 .DESCRIPTION 
 Enumerates missing or installed Windows Updates and returns an array of objects with update details. 
-Optionally downloads update files when DownloadURL is available.
+Features enhanced batch download-first-then-install workflow with comprehensive progress visualization.
 Supports exporting scan results and importing them on other machines for download.
 Supports WSUS offline scanning using wsusscn2.cab for air-gapped environments.
+Includes interactive installation confirmation and detailed batch processing summaries.
 #>
 
 # Helper function to install updates
@@ -122,10 +123,10 @@ function Invoke-UpdateDownload {
   
   if ([string]::IsNullOrWhiteSpace($Url)) {
     return @{
-      Success = $false
+      Success  = $false
       FilePath = $null
       FileSize = 0
-      Reason = "No download URL available"
+      Reason   = "No download URL available"
     }
   }
 
@@ -150,10 +151,10 @@ function Invoke-UpdateDownload {
       Write-Host "  Status: File already exists ($existingSizeMB MB)" -ForegroundColor Yellow
       
       return @{
-        Success = $true
+        Success  = $true
         FilePath = $fullPath
         FileSize = $existingSize
-        Reason = "File already existed"
+        Reason   = "File already existed"
       }
     }
 
@@ -200,36 +201,37 @@ function Invoke-UpdateDownload {
       $fileSizeMB = [math]::Round($fileSize / 1MB, 2)
       $downloadSpeed = if ($stopwatch.Elapsed.TotalSeconds -gt 0) { 
         [math]::Round($fileSize / $stopwatch.Elapsed.TotalSeconds / 1MB, 2) 
-      } else { 0 }
+      }
+      else { 0 }
       
       Write-Host "  Status: Download completed successfully" -ForegroundColor Green
       Write-Host "  Size: $fileSizeMB MB" -ForegroundColor Green
       Write-Host "  Time: $($stopwatch.Elapsed.ToString('mm\:ss')) (${downloadSpeed} MB/s)" -ForegroundColor Green
       
       return @{
-        Success = $true
+        Success  = $true
         FilePath = $fullPath
         FileSize = $fileSize
-        Reason = "Downloaded successfully"
+        Reason   = "Downloaded successfully"
       }
     }
     else {
       Write-Host "  Status: Download failed - File not found after download" -ForegroundColor Red
       return @{
-        Success = $false
+        Success  = $false
         FilePath = $null
         FileSize = 0
-        Reason = "File not found after download"
+        Reason   = "File not found after download"
       }
     }
   }
   catch {
     Write-Host "  Status: Download failed - $($_.Exception.Message)" -ForegroundColor Red
     return @{
-      Success = $false
+      Success  = $false
       FilePath = $null
       FileSize = 0
-      Reason = $_.Exception.Message
+      Reason   = $_.Exception.Message
     }
   }
 }
@@ -276,11 +278,11 @@ function Invoke-UpdateBatchInstallation {
     $installDuration = $installEnd - $installStart
     
     $resultObj = [PSCustomObject]@{
-      KbId = $update.KbId
-      Title = $update.Title
-      FilePath = $update.DownloadedFilePath
-      Success = $installResult
-      Duration = $installDuration
+      KbId             = $update.KbId
+      Title            = $update.Title
+      FilePath         = $update.DownloadedFilePath
+      Success          = $installResult
+      Duration         = $installDuration
       InstallationTime = $installEnd
     }
     
@@ -1325,17 +1327,17 @@ function Get-LocalUpdateStatus {
     Write-Host "="*60 -ForegroundColor Yellow
   }
 
-  # Display download summary if downloads were requested
+  # Display final summary if downloads were requested
   if ($DownloadUpdates) {
     $totalUpdates = $MyUpdates.Count
     $updatesWithUrls = ($MyUpdates | Where-Object { $_.DownloadURL }).Count
     $updatesWithoutUrls = $totalUpdates - $updatesWithUrls
     $successfulDownloads = ($MyUpdates | Where-Object { $_.DownloadSuccess -eq $true }).Count
     
-    $summaryTitle = if ($InstallUpdates) { "DOWNLOAD & INSTALLATION SUMMARY" } else { "DOWNLOAD SUMMARY" }
-    Write-Host "`n" + "="*50 -ForegroundColor Cyan
+    $summaryTitle = if ($InstallUpdates) { "FINAL DOWNLOAD & INSTALLATION SUMMARY" } else { "FINAL DOWNLOAD SUMMARY" }
+    Write-Host "`n" + "="*60 -ForegroundColor Cyan
     Write-Host $summaryTitle -ForegroundColor Cyan
-    Write-Host "="*50 -ForegroundColor Cyan
+    Write-Host "="*60 -ForegroundColor Cyan
     Write-Host "Total updates found: $totalUpdates" -ForegroundColor White
     Write-Host "Updates with download URLs: $updatesWithUrls" -ForegroundColor White
     Write-Host "Updates requiring manual download: $updatesWithoutUrls" -ForegroundColor Yellow
@@ -1351,19 +1353,7 @@ function Get-LocalUpdateStatus {
     }
     
     Write-Host "Download location: $DownloadPath" -ForegroundColor White
-    
-    if ($updatesWithoutUrls -gt 0) {
-      Write-Host "`nUpdates requiring manual download:" -ForegroundColor Yellow
-      $MyUpdates | Where-Object { -not $_.DownloadURL } | ForEach-Object {
-        Write-Host "  - KB$($_.KbId): $($_.Title)" -ForegroundColor Gray
-        if ($_.MicrosoftCatalogURL) {
-          Write-Host "    Download: $($_.MicrosoftCatalogURL)" -ForegroundColor Cyan
-        }
-      }
-      Write-Host "`nTip: Visit Microsoft Update Catalog for manual downloads" -ForegroundColor Green
-    }
-    
-    Write-Host "="*50 -ForegroundColor Cyan
+    Write-Host "="*60 -ForegroundColor Cyan
   }
 
   # Export report if requested

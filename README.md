@@ -1,6 +1,6 @@
 # Get-LocalUpdateStatus
 
-A PowerShell function that enumerates Windows Updates (both installed and missing) on local or remote computers and returns detailed update information as PowerShell objects. **Now includes the ability to download update files directly from Microsoft, support for air-gapped environments through export/import functionality, and WSUS offline scanning using wsusscn2.cab!**
+A PowerShell function that enumerates Windows Updates (both installed and missing) on local or remote computers and returns detailed update information as PowerShell objects. **Now features an enhanced batch download-first-then-install workflow with comprehensive progress visualization, support for air-gapped environments through export/import functionality, and WSUS offline scanning using wsusscn2.cab!**
 
 ## Description
 
@@ -10,9 +10,11 @@ This script provides detailed information about Windows Updates including:
 - Hidden updates
 - Update metadata (KB IDs, security bulletins, CVE IDs, severity, etc.)
 - Installation dates and restart requirements
-- **NEW: Direct download capability for updates with available download URLs**
-- **NEW: Export/Import functionality for air-gapped or restricted network environments**
-- **NEW: WSUS offline scanning using Microsoft's wsusscn2.cab for completely offline environments**
+- **NEW v1.5.0: Enhanced batch download-first-then-install workflow with progress visualization**
+- **NEW v1.5.0: Interactive installation confirmation and detailed batch processing summaries**
+- **Direct download capability for updates with available download URLs**
+- **Export/Import functionality for air-gapped or restricted network environments**
+- **WSUS offline scanning using Microsoft's wsusscn2.cab for completely offline environments**
 
 ## Requirements
 
@@ -52,11 +54,14 @@ This script provides detailed information about Windows Updates including:
 
 ### InstallUpdates (Optional)
 - **Type:** Switch
-- **Description:** Automatically install downloaded updates using DISM (.cab) or WUSA (.msu)
+- **Description:** Automatically install downloaded updates using DISM (.cab) or WUSA (.msu) in batch mode
 - **Requirements:** Must be used with `-DownloadUpdates` parameter
+- **Workflow:** Downloads all updates first, then asks for confirmation before batch installation
 - **Supported Formats:** .cab files (via DISM), .msu files (via WUSA)
 - **Installation Flags:** Uses /Quiet /NoRestart (DISM) and /quiet /norestart (WUSA)
+- **Interactive Confirmation:** Prompts user before starting installation phase
 - **Admin Required:** Requires Administrator privileges for installation
+- **Progress Visualization:** Shows detailed progress for each installation
 - **Default:** Disabled### DownloadPath (Optional)
 - **Type:** String
 - **Description:** Directory path where downloaded update files will be saved
@@ -134,21 +139,27 @@ Get-LocalUpdateStatus -ComputerName localhost -UpdateSearchFilter 'IsInstalled=0
     Where-Object { $_.SeverityText -in @('Critical', 'Important') }
 ```
 
-### Download and Install Updates (NEW!)
+### Download and Install Updates with Enhanced Batch Processing (NEW v1.5.0!)
 ```powershell
-# Download and automatically install missing updates
+# Download all updates first, then install with user confirmation
 Get-LocalUpdateStatus -ComputerName localhost -UpdateSearchFilter 'IsInstalled=0' -DownloadUpdates -InstallUpdates
 
-# Download and install to custom location
+# Enhanced workflow with custom download location
 Get-LocalUpdateStatus -ComputerName localhost -UpdateSearchFilter 'IsInstalled=0' -DownloadUpdates -InstallUpdates -DownloadPath "C:\Updates"
 
-# Download and install only critical updates
-Get-LocalUpdateStatus -ComputerName localhost -UpdateSearchFilter 'IsInstalled=0' -DownloadUpdates -InstallUpdates | 
-    Where-Object { $_.SeverityText -eq 'Critical' }
-
-# WSUS offline scan with download and installation
+# WSUS offline scan with enhanced batch download and installation
 Get-LocalUpdateStatus -ComputerName localhost -WSUSOfflineScan -WSUSScanFile "C:\wsusscn2.cab" -UpdateSearchFilter 'IsInstalled=0' -DownloadUpdates -InstallUpdates
+
+# Import updates and process with enhanced batch workflow
+Get-LocalUpdateStatus -ImportReport "Server01_Updates.xml" -DownloadUpdates -InstallUpdates -DownloadPath "C:\Updates"
 ```
+
+**New v1.5.0 Workflow Features:**
+- **Phase 1: Batch Download** - Downloads all available updates with progress visualization
+- **Phase 2: User Confirmation** - Interactive prompt before installation begins
+- **Phase 3: Batch Installation** - Installs all downloaded updates with detailed progress
+- **Enhanced Progress Display** - Real-time download speeds, file sizes, and installation timing
+- **Comprehensive Summaries** - Detailed reports after each phase and final results
 
 ### Export/Import for Air-gapped Environments (NEW!)
 
@@ -247,24 +258,126 @@ Each update object contains the following properties:
 | `DownloadURL` | Download URL |
 | `BulletinURL` | Security bulletin URL |
 | `DownloadSuccess` | Download success status (only when `-DownloadUpdates` is used) |
+| `DownloadedFilePath` | Path to downloaded file (v1.5.0+) |
+| `DownloadedFileSize` | Size of downloaded file in bytes (v1.5.0+) |
+| `DownloadReason` | Reason for download status (v1.5.0+) |
+| `InstallSuccess` | Installation success status (only when `-InstallUpdates` is used) |
+| `InstallDuration` | Time taken for installation (v1.5.0+) |
+| `InstallationTime` | When installation completed (v1.5.0+) |
 | `ScanMethod` | Scan method used ("WSUS Offline" for offline scans, not present for normal scans) |
 
-## Download Features
+## Enhanced Download & Installation Features (v1.5.0)
+
+### Two-Phase Processing Workflow
+The enhanced v1.5.0 workflow separates download and installation into distinct phases:
+
+#### Phase 1: Batch Download
+- Downloads all available updates with enhanced progress visualization
+- Real-time download speeds and file size monitoring
+- Individual progress bars for each update
+- Comprehensive download summaries with statistics
+
+#### Phase 2: Interactive Installation
+- User confirmation prompt before installation begins
+- Detailed installation progress with timing information
+- Sequential batch processing with comprehensive error handling
+- Final installation summaries with success/failure statistics
+
+### Enhanced Progress Visualization
+```
+============================================================
+STARTING BATCH DOWNLOAD PHASE
+============================================================
+Updates to download: 5
+Download directory: C:\Temp\WindowsUpdates
+============================================================
+
+[1/5] Downloading KB5034441
+  Title: Security Update for Windows 10...
+  File: KB5034441.msu
+  URL: https://catalog.s.download...
+  Downloading...
+  Status: Download completed successfully
+  Size: 15.4 MB
+  Time: 01:23 (11.2 MB/s)
+
+[2/5] Downloading KB5034442
+  Title: Cumulative Update for .NET Framework...
+  File: KB5034442.msu
+  Status: File already exists (8.7 MB)
+
+============================================================
+DOWNLOAD PHASE COMPLETED
+============================================================
+Successful downloads: 5
+Failed downloads: 0
+Total downloaded: 89.3 MB
+Download directory: C:\Temp\WindowsUpdates
+============================================================
+
+WARNING: About to install 5 Windows Update(s)
+This may require system restart(s) and could take significant time.
+Do you want to proceed with installation? (Y/N): Y
+
+============================================================
+STARTING BATCH INSTALLATION
+============================================================
+Mode: Sequential
+Total updates to install: 5
+============================================================
+
+[1/5] Installing KB5034441
+  Title: Security Update for Windows 10...
+  File: KB5034441.msu
+  Installing: KB5034441.msu
+  Using WUSA for .msu installation...
+  Status: Installation completed successfully
+  Duration: 02:45
+  Progress: 1 successful, 0 failed, 4 remaining
+
+============================================================
+BATCH INSTALLATION COMPLETED
+============================================================
+Total updates processed: 5
+Successful installations: 5
+Failed installations: 0
+Success rate: 100.0%
+Recommendation: Restart the computer to complete the installation of 5 update(s)
+============================================================
+```
+
+### Interactive Installation Confirmation
+Before starting the installation phase, users are prompted with:
+- Number of updates to be installed
+- Warning about potential restart requirements
+- Option to cancel and keep downloads for later manual installation
 
 ### Automatic File Download
 When using the `-DownloadUpdates` switch, the script will:
 - Create the download directory if it doesn't exist
 - Download update files from Microsoft servers when DownloadURL is available
 - Skip files that already exist in the download location
-- Display download progress and file sizes
-- Provide a comprehensive download summary
+- Display enhanced download progress with real-time speeds and timing
+- Provide comprehensive download summaries with detailed statistics
+- Store download results for subsequent installation phase
 
-### Download Summary
-After download completion, a summary is displayed showing:
-- Total updates found
-- Updates with available download URLs
-- Number of successful downloads
+### Enhanced Download Summary (v1.5.0)
+After download completion, an enhanced summary is displayed showing:
+- Total updates found and processed
+- Updates with available download URLs vs. manual download requirements
+- Number of successful downloads with total size downloaded
 - Download location path
+- Real-time download statistics and timing information
+
+### Installation Features (v1.5.0)
+When using the `-InstallUpdates` switch with `-DownloadUpdates`:
+- **Two-phase workflow:** Downloads first, then installs with user confirmation
+- **Interactive confirmation:** User must approve installation before it begins
+- **Batch processing:** Installs all downloaded updates sequentially
+- **Progress visualization:** Real-time installation progress with timing
+- **Comprehensive logging:** Detailed success/failure tracking for each update
+- **Silent installation:** Uses appropriate flags to minimize user interaction
+- **No automatic restart:** Manual restart required after installation completes
 
 ### File Naming
 Downloaded files are named using:
@@ -580,48 +693,150 @@ InformationURL        : https://support.microsoft.com/help/5070884
 SupportURL            : https://support.microsoft.com/help/5070884
 ```
 
-## Sample Installation Output
+## Sample Enhanced Download & Installation Output (v1.5.0)
 
 ```
-Processing update: KB5001234 - 2025-10 Cumulative Update for Windows 10
-  Downloading: windows10.0-kb5001234-x64_abc123.msu
-  From: http://download.windowsupdate.com/c/msdownload/update/software/secu/2025/10/windows10.0-kb5001234-x64_abc123_def456.msu
-  Downloaded successfully: windows10.0-kb5001234-x64_abc123.msu (45.67 MB)
-  Installing: windows10.0-kb5001234-x64_abc123.msu
+Windows Update is using Microsoft Update (default)
+
+============================================================
+STARTING BATCH DOWNLOAD PHASE
+============================================================
+Updates to download: 3
+Download directory: C:\Temp\WindowsUpdates
+============================================================
+
+[1/3] Downloading KB5034441
+  Title: 2025-10 Security Update for Windows 10 Version 22H2
+  File: windows10.0-kb5034441-x64_security.msu
+  URL: https://catalog.s.download.windowsupdate.com/...
+  Downloading...
+  Status: Download completed successfully
+  Size: 67.8 MB
+  Time: 02:15 (30.1 MB/s)
+
+[2/3] Downloading KB5034442
+  Title: 2025-10 Cumulative Update for .NET Framework 3.5 and 4.8
+  File: KB5034442.msu
+  Status: File already exists (12.4 MB)
+
+[3/3] Downloading KB5034443
+  Title: Security Update for Windows Defender Antivirus
+  File: KB5034443.cab
+  URL: https://catalog.s.download.windowsupdate.com/...
+  Downloading...
+  Status: Download completed successfully
+  Size: 23.7 MB
+  Time: 00:45 (31.6 MB/s)
+
+============================================================
+DOWNLOAD PHASE COMPLETED
+============================================================
+Successful downloads: 3
+Failed downloads: 0
+Total downloaded: 103.9 MB
+Download directory: C:\Temp\WindowsUpdates
+============================================================
+
+Proceeding with batch installation...
+
+WARNING: About to install 3 Windows Update(s)
+This may require system restart(s) and could take significant time.
+Do you want to proceed with installation? (Y/N): Y
+
+============================================================
+STARTING BATCH INSTALLATION
+============================================================
+Mode: Sequential
+Total updates to install: 3
+============================================================
+
+[1/3] Installing KB5034441
+  Title: 2025-10 Security Update for Windows 10 Version 22H2
+  File: windows10.0-kb5034441-x64_security.msu
+  Installing: windows10.0-kb5034441-x64_security.msu
   Using WUSA for .msu installation...
-  Installation successful: windows10.0-kb5001234-x64_abc123.msu
+  Status: Installation completed successfully
+  Duration: 03:12
+  Progress: 1 successful, 0 failed, 2 remaining
 
-Processing update: KB5002345 - Security Update for Windows 10
-  Downloading: windows10.0-kb5002345-x64_def789.cab
-  From: http://download.windowsupdate.com/d/msdownload/update/software/secu/2025/10/windows10.0-kb5002345-x64_def789.cab
-  Downloaded successfully: windows10.0-kb5002345-x64_def789.cab (12.34 MB)
-  Installing: windows10.0-kb5002345-x64_def789.cab
+[2/3] Installing KB5034442
+  Title: 2025-10 Cumulative Update for .NET Framework 3.5 and 4.8
+  File: KB5034442.msu
+  Installing: KB5034442.msu
+  Using WUSA for .msu installation...
+  Status: Installation completed successfully
+  Duration: 01:45
+  Progress: 2 successful, 0 failed, 1 remaining
+
+[3/3] Installing KB5034443
+  Title: Security Update for Windows Defender Antivirus
+  File: KB5034443.cab
+  Installing: KB5034443.cab
   Using DISM for .cab installation...
-  Installation successful: windows10.0-kb5002345-x64_def789.cab
+  Status: Installation completed successfully
+  Duration: 00:52
+  Progress: 3 successful, 0 failed, 0 remaining
 
-==================================================
-DOWNLOAD & INSTALLATION SUMMARY
-==================================================
-Total updates found: 15
-Updates with download URLs: 8
-Updates requiring manual download: 7
-Successful downloads: 6
-Successful installations: 6
+============================================================
+BATCH INSTALLATION COMPLETED
+============================================================
+Total updates processed: 3
+Successful installations: 3
+Failed installations: 0
+Success rate: 100.0%
+
+Recommendation: Restart the computer to complete the installation of 3 update(s)
+============================================================
+
+============================================================
+FINAL DOWNLOAD & INSTALLATION SUMMARY
+============================================================
+Total updates found: 5
+Updates with download URLs: 3
+Updates requiring manual download: 2
+Successful downloads: 3
+Successful installations: 3
 Download location: C:\Temp\WindowsUpdates
-==================================================
+============================================================
 ```
 
-## Sample Object Properties with Installation Information
+## Sample Installation Cancellation Output
+
+```
+WARNING: About to install 3 Windows Update(s)
+This may require system restart(s) and could take significant time.
+Do you want to proceed with installation? (Y/N): N
+
+Installation cancelled by user.
+Updates have been downloaded to: C:\Temp\WindowsUpdates
+You can install them manually later or run the script again with -InstallUpdates
+
+============================================================
+FINAL DOWNLOAD SUMMARY
+============================================================
+Total updates found: 5
+Updates with download URLs: 3
+Updates requiring manual download: 2
+Successful downloads: 3
+Download location: C:\Temp\WindowsUpdates
+============================================================
+```
+
+## Sample Object Properties with Enhanced Installation Information (v1.5.0)
 
 ```powershell
 Computer              : MYSERVER
-KbId                  : 5001234
-Title                 : 2025-10 Cumulative Update for Windows 10
+KbId                  : 5034441
+Title                 : 2025-10 Security Update for Windows 10 Version 22H2
 IsInstalled           : False
-DownloadURL           : http://download.windowsupdate.com/c/msdownload/update/...
+DownloadURL           : https://catalog.s.download.windowsupdate.com/...
 DownloadSuccess       : True
+DownloadedFilePath    : C:\Temp\WindowsUpdates\windows10.0-kb5034441-x64_security.msu
+DownloadedFileSize    : 71098368
+DownloadReason        : Downloaded successfully
 InstallSuccess        : True
-InstalledFilePath     : C:\Temp\WindowsUpdates\windows10.0-kb5001234-x64_abc123.msu
+InstallDuration       : 00:03:12
+InstallationTime      : 10/27/2025 2:45:33 PM
 ManualDownloadInfo    : 
 MicrosoftCatalogURL   : 
 ```
@@ -656,21 +871,33 @@ The script automatically detects and displays the Windows Update source:
 
 ## Version Information
 
-- **Version:** 1.4.0
+- **Version:** 1.5.0
 - **Author:** Jan Tiedemann
 - **Copyright:** 2021-2025
 - **GUID:** 4b937790-b06b-427f-8c1f-565030ae0227
 - **Last Updated:** October 2025
 
-### Recent Updates (v1.4.0)
-- **NEW: Automatic update installation with `-InstallUpdates` parameter**
+### Recent Updates (v1.5.0)
+- **NEW: Enhanced batch download-first-then-install workflow with comprehensive progress visualization**
+- **NEW: Interactive installation confirmation with user approval before installation phase**
+- **NEW: Real-time download progress with speed monitoring and timing information**
+- **NEW: Detailed batch installation progress with individual update timing**
+- **NEW: Comprehensive phase summaries for download and installation operations**
+- **NEW: Enhanced error handling and status tracking for batch operations**
+- **NEW: Improved download result tracking with file paths, sizes, and status reasons**
+- **NEW: Installation duration tracking and success/failure statistics**
+- **Enhanced PowerShell compatibility** with improved parameter validation and error handling
+- **Improved user experience** with better visual progress indicators and detailed summaries
+
+### Previous Updates (v1.4.0)
+- **Automatic update installation with `-InstallUpdates` parameter**
 - **Support for .cab files** via DISM.exe (/Online /Add-Package /Quiet /NoRestart)
 - **Support for .msu files** via wusa.exe (/quiet /norestart)
 - **Enhanced result objects** with InstallSuccess and InstalledFilePath properties
 - **Improved summaries** showing installation statistics
 - **Automatic file type detection** and appropriate installer selection
 - **Comprehensive error handling** for installation failures
-- **NEW: Manual download guidance for updates without direct URLs**
+- **Manual download guidance for updates without direct URLs**
 - Added `ManualDownloadInfo` and `MicrosoftCatalogURL` properties to update objects
 - Enhanced download summaries to show updates requiring manual download
 - **FIXED: WSUS offline scan now working correctly with wsusscn2.cab**
@@ -681,19 +908,22 @@ The script automatically detects and displays the Windows Update source:
 
 ```powershell
 # Basic scan for missing updates
-Get-LocalUpdateStatus -UpdateSearchFilter "IsInstalled=0"
+Get-LocalUpdateStatus -ComputerName localhost -UpdateSearchFilter "IsInstalled=0"
 
-# Scan and download missing updates
-Get-LocalUpdateStatus -UpdateSearchFilter "IsInstalled=0" -DownloadUpdates -DownloadPath "C:\Temp"
+# Enhanced batch download and install with user confirmation (v1.5.0)
+Get-LocalUpdateStatus -ComputerName localhost -UpdateSearchFilter "IsInstalled=0" -DownloadUpdates -InstallUpdates
 
-# WSUS offline scan (run as Administrator)
-Get-LocalUpdateStatus -WSUSOfflineScan -WSUSScanFile "C:\Path\To\wsusscn2.cab" -UpdateSearchFilter "IsInstalled=0"
+# Download only (review before installing)
+Get-LocalUpdateStatus -ComputerName localhost -UpdateSearchFilter "IsInstalled=0" -DownloadUpdates -DownloadPath "C:\Updates"
+
+# WSUS offline scan with enhanced batch processing (run as Administrator)
+Get-LocalUpdateStatus -ComputerName localhost -WSUSOfflineScan -WSUSScanFile "C:\Path\To\wsusscn2.cab" -UpdateSearchFilter "IsInstalled=0" -DownloadUpdates -InstallUpdates
 
 # Export scan results for air-gapped systems
-Get-LocalUpdateStatus -UpdateSearchFilter "IsInstalled=0" -ExportReport "C:\Temp\UpdateReport"
+Get-LocalUpdateStatus -ComputerName localhost -UpdateSearchFilter "IsInstalled=0" -ExportReport "C:\Temp\UpdateReport"
 
-# Import and process exported results
-Get-LocalUpdateStatus -ImportReport "C:\Temp\UpdateReport.xml" -DownloadUpdates -DownloadPath "C:\Updates"
+# Import and process exported results with enhanced workflow
+Get-LocalUpdateStatus -ImportReport "C:\Temp\UpdateReport.xml" -DownloadUpdates -InstallUpdates -DownloadPath "C:\Updates"
 ```
 
 ### Quick Troubleshooting Checklist
@@ -717,15 +947,19 @@ Get-LocalUpdateStatus -ImportReport "C:\Temp\UpdateReport.xml" -DownloadUpdates 
 - **Downloaded files are standard .msu or .cab files that can be installed manually**
 - **Always verify downloaded files before installation**
 
-### Installation Features
-- **InstallUpdates requires DownloadUpdates to be enabled**
-- **Automatic file type detection** (.cab uses DISM, .msu uses WUSA)
-- **Silent installation** with /Quiet /NoRestart and /quiet /norestart flags
-- **No automatic restart** - manual restart required if needed
-- **Installation status tracking** in InstallSuccess property
-- **Supports error handling** with proper exit code interpretation
-- **Administrator privileges required** for installation operations
-- **Compatible with all scan modes** (online, offline, import)
+### Installation Features (v1.5.0)
+- **Enhanced two-phase workflow** with download-first-then-install approach
+- **Interactive user confirmation** before installation phase begins
+- **Batch processing** with comprehensive progress visualization and timing
+- **Real-time progress tracking** for each individual installation
+- **Detailed error handling** with proper exit code interpretation and logging
+- **Silent installation modes** with /Quiet /NoRestart and /quiet /norestart flags
+- **No automatic restart capability** - manual restart required if needed
+- **Installation duration tracking** with comprehensive success/failure statistics
+- **Administrator privileges required** for all installation operations
+- **Compatible with all scan modes** (online, offline, import) and enhanced workflows
+- **Comprehensive result tracking** with InstallSuccess, InstallDuration, and InstallationTime properties
+- **User cancellation support** - allows canceling installation while preserving downloads
 
 ### Export/Import Features
 - **Export files use PowerShell XML serialization format (.xml)**
@@ -755,15 +989,19 @@ Get-LocalUpdateStatus -ImportReport "C:\Temp\UpdateReport.xml" -DownloadUpdates 
 - **Perfect for cumulative updates** that often lack direct download URLs
 - **Clear instructions** for using Microsoft Update Catalog or Windows Update
 
-### Automatic Installation Support
-- **Automatic installation** of downloaded updates with `-InstallUpdates` parameter
-- **DISM integration** for .cab file installation with silent operation
-- **WUSA integration** for .msu file installation with silent operation  
-- **No restart requirement** - installations use /NoRestart and /norestart flags
-- **Comprehensive error handling** with proper exit code interpretation
-- **Installation status tracking** in result objects (InstallSuccess property)
-- **File path tracking** for installed updates (InstalledFilePath property)
-- **Supports both online and offline scan modes** with installation capability
+### Enhanced Installation Support (v1.5.0)
+- **Enhanced batch download-first-then-install workflow** with comprehensive user control
+- **Interactive confirmation prompts** before installation phase begins
+- **Real-time progress visualization** with detailed timing and success/failure tracking
+- **DISM integration** for .cab file installation with enhanced error handling and logging
+- **WUSA integration** for .msu file installation with comprehensive status tracking  
+- **No restart requirement enforcement** - installations use /NoRestart and /norestart flags
+- **Comprehensive error handling** with proper exit code interpretation and detailed logging
+- **Installation status and timing tracking** in result objects (InstallSuccess, InstallDuration, InstallationTime properties)
+- **Enhanced file path tracking** for installed updates (DownloadedFilePath property)
+- **Supports all scan modes** (online, offline, import) with consistent enhanced workflow
+- **User cancellation capability** - option to cancel installation while preserving downloaded files
+- **Detailed batch processing summaries** with comprehensive statistics and recommendations
 
 ## Troubleshooting
 
