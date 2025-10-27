@@ -1,7 +1,7 @@
 <#
 PSScriptInfo
 
-.VERSION 1.3.2
+.VERSION 1.3.3
 
 .GUID 4b937790-b06b-427f-8c1f-565030ae0227
 
@@ -469,6 +469,16 @@ function Get-LocalUpdateStatus {
           [System.String]::Empty
         }
 
+        # Create manual download guidance for updates without direct download URLs
+        $manualDownloadInfo = ""
+        $microsoftCatalogUrl = ""
+        
+        if (-not $downloadUrl -and $update.KBArticleIDs.Count -gt 0) {
+          $kbId = $update.KBArticleIDs | Select-Object -First 1
+          $microsoftCatalogUrl = "https://www.catalog.update.microsoft.com/Search.aspx?q=KB$kbId"
+          $manualDownloadInfo = "No direct download URL available. Manual download: Microsoft Update Catalog"
+        }
+
         $updates = New-Object -TypeName psobject |
         Add-Member -MemberType NoteProperty -Name Computer -Value "$env:computername" -PassThru -Force |
         Add-Member -MemberType NoteProperty -Name Id -Value ($update.SecurityBulletinIDs | Select-Object -First 1) -PassThru -Force |
@@ -486,6 +496,8 @@ function Get-LocalUpdateStatus {
         Add-Member -MemberType NoteProperty -Name InformationURL -Value ($update.MoreInfoUrls | Select-Object -First 1) -PassThru -Force |
         Add-Member -MemberType NoteProperty -Name SupportURL -Value $update.supporturl -PassThru -Force |
         Add-Member -MemberType NoteProperty -Name DownloadURL -Value $downloadUrl -PassThru -Force |
+        Add-Member -MemberType NoteProperty -Name ManualDownloadInfo -Value $manualDownloadInfo -PassThru -Force |
+        Add-Member -MemberType NoteProperty -Name MicrosoftCatalogURL -Value $microsoftCatalogUrl -PassThru -Force |
         Add-Member -MemberType NoteProperty -Name BulletinURL -Value $bulletinUrl -PassThru -Force |
         Add-Member -MemberType NoteProperty -Name ScanMethod -Value "WSUS Offline" -PassThru -Force
 
@@ -509,7 +521,15 @@ function Get-LocalUpdateStatus {
           $updates | Add-Member -MemberType NoteProperty -Name DownloadSuccess -Value $downloadSuccess -Force
         }
         elseif ($DownloadUpdates -and -not $downloadUrl) {
+          $kbId = $update.KBArticleIDs | Select-Object -First 1
+          Write-Host "`nUpdate KB$kbId has no direct download URL available" -ForegroundColor Yellow
+          Write-Host "  Title: $($update.Title)" -ForegroundColor Gray
+          if ($microsoftCatalogUrl) {
+            Write-Host "  Manual download available at: $microsoftCatalogUrl" -ForegroundColor Cyan
+          }
+          Write-Host "  Alternative: Use Windows Update, WSUS, or Microsoft Update Catalog" -ForegroundColor Gray
           $updates | Add-Member -MemberType NoteProperty -Name DownloadSuccess -Value $false -Force
+          $updates | Add-Member -MemberType NoteProperty -Name DownloadNote -Value "No direct URL - manual download required" -Force
         }
 
         $MyUpdates += $updates
@@ -554,10 +574,23 @@ function Get-LocalUpdateStatus {
       
       if ($DownloadUpdates) {
         $updatesWithUrls = ($MyUpdates | Where-Object { $_.DownloadURL }).Count
+        $updatesWithoutUrls = $totalUpdates - $updatesWithUrls
         $successfulDownloads = ($MyUpdates | Where-Object { $_.DownloadSuccess -eq $true }).Count
         Write-Host "Updates with download URLs: $updatesWithUrls" -ForegroundColor White
+        Write-Host "Updates requiring manual download: $updatesWithoutUrls" -ForegroundColor Yellow
         Write-Host "Successful downloads: $successfulDownloads" -ForegroundColor Green
         Write-Host "Download location: $DownloadPath" -ForegroundColor White
+        
+        if ($updatesWithoutUrls -gt 0) {
+          Write-Host "`nUpdates requiring manual download:" -ForegroundColor Yellow
+          $MyUpdates | Where-Object { -not $_.DownloadURL } | ForEach-Object {
+            Write-Host "  - KB$($_.KbId): $($_.Title)" -ForegroundColor Gray
+            if ($_.MicrosoftCatalogURL) {
+              Write-Host "    Download: $($_.MicrosoftCatalogURL)" -ForegroundColor Cyan
+            }
+          }
+          Write-Host "`nTip: Visit Microsoft Update Catalog for manual downloads" -ForegroundColor Green
+        }
       }
       
       Write-Host "="*50 -ForegroundColor Cyan
@@ -645,6 +678,16 @@ function Get-LocalUpdateStatus {
       [System.String]::Empty
     }
 
+    # Create manual download guidance for updates without direct download URLs
+    $manualDownloadInfo = ""
+    $microsoftCatalogUrl = ""
+    
+    if (-not $downloadUrl -and $update.KBArticleIDs.Count -gt 0) {
+      $kbId = $update.KBArticleIDs | Select-Object -First 1
+      $microsoftCatalogUrl = "https://www.catalog.update.microsoft.com/Search.aspx?q=KB$kbId"
+      $manualDownloadInfo = "No direct download URL available. Manual download: Microsoft Update Catalog"
+    }
+
     $updates = New-Object -TypeName psobject |
     Add-Member -MemberType NoteProperty -Name Computer -Value "$env:computername" -PassThru -Force |
     Add-Member -MemberType NoteProperty -Name Id -Value ($update.SecurityBulletinIDs | Select-Object -First 1) -PassThru -Force |
@@ -662,6 +705,8 @@ function Get-LocalUpdateStatus {
     Add-Member -MemberType NoteProperty -Name InformationURL -Value ($update.MoreInfoUrls | Select-Object -First 1) -PassThru -Force |
     Add-Member -MemberType NoteProperty -Name SupportURL -Value $update.supporturl -PassThru -Force |
     Add-Member -MemberType NoteProperty -Name DownloadURL -Value $downloadUrl -PassThru -Force |
+    Add-Member -MemberType NoteProperty -Name ManualDownloadInfo -Value $manualDownloadInfo -PassThru -Force |
+    Add-Member -MemberType NoteProperty -Name MicrosoftCatalogURL -Value $microsoftCatalogUrl -PassThru -Force |
     Add-Member -MemberType NoteProperty -Name BulletinURL -Value $bulletinUrl -PassThru -Force
 
     # Download update if DownloadUpdates switch is enabled and URL is available
@@ -673,7 +718,15 @@ function Get-LocalUpdateStatus {
       $updates | Add-Member -MemberType NoteProperty -Name DownloadSuccess -Value $downloadSuccess -Force
     }
     elseif ($DownloadUpdates -and -not $downloadUrl) {
+      $kbId = $update.KBArticleIDs | Select-Object -First 1
+      Write-Host "`nUpdate KB$kbId has no direct download URL available" -ForegroundColor Yellow
+      Write-Host "  Title: $($update.Title)" -ForegroundColor Gray
+      if ($microsoftCatalogUrl) {
+        Write-Host "  Manual download available at: $microsoftCatalogUrl" -ForegroundColor Cyan
+      }
+      Write-Host "  Alternative: Use Windows Update, WSUS, or Microsoft Update Catalog" -ForegroundColor Gray
       $updates | Add-Member -MemberType NoteProperty -Name DownloadSuccess -Value $false -Force
+      $updates | Add-Member -MemberType NoteProperty -Name DownloadNote -Value "No direct URL - manual download required" -Force
     }
 
     $MyUpdates += $updates
@@ -683,6 +736,7 @@ function Get-LocalUpdateStatus {
   if ($DownloadUpdates) {
     $totalUpdates = $MyUpdates.Count
     $updatesWithUrls = ($MyUpdates | Where-Object { $_.DownloadURL }).Count
+    $updatesWithoutUrls = $totalUpdates - $updatesWithUrls
     $successfulDownloads = ($MyUpdates | Where-Object { $_.DownloadSuccess -eq $true }).Count
     
     Write-Host "`n" + "="*50 -ForegroundColor Cyan
@@ -690,8 +744,21 @@ function Get-LocalUpdateStatus {
     Write-Host "="*50 -ForegroundColor Cyan
     Write-Host "Total updates found: $totalUpdates" -ForegroundColor White
     Write-Host "Updates with download URLs: $updatesWithUrls" -ForegroundColor White
+    Write-Host "Updates requiring manual download: $updatesWithoutUrls" -ForegroundColor Yellow
     Write-Host "Successful downloads: $successfulDownloads" -ForegroundColor Green
     Write-Host "Download location: $DownloadPath" -ForegroundColor White
+    
+    if ($updatesWithoutUrls -gt 0) {
+      Write-Host "`nUpdates requiring manual download:" -ForegroundColor Yellow
+      $MyUpdates | Where-Object { -not $_.DownloadURL } | ForEach-Object {
+        Write-Host "  - KB$($_.KbId): $($_.Title)" -ForegroundColor Gray
+        if ($_.MicrosoftCatalogURL) {
+          Write-Host "    Download: $($_.MicrosoftCatalogURL)" -ForegroundColor Cyan
+        }
+      }
+      Write-Host "`nTip: Visit Microsoft Update Catalog for manual downloads" -ForegroundColor Green
+    }
+    
     Write-Host "="*50 -ForegroundColor Cyan
   }
 

@@ -515,6 +515,48 @@ Download location: C:\OfflineUpdates
 ==================================================
 ```
 
+## Sample Output with Manual Download Guidance
+
+```
+Update KB5070884 has no direct download URL available
+  Title: 2025-10 Cumulative Update for Microsoft server operating system version 21H2 for x64-based Systems (KB5070884)
+  Manual download available at: https://www.catalog.update.microsoft.com/Search.aspx?q=KB5070884
+  Alternative: Use Windows Update, WSUS, or Microsoft Update Catalog
+
+==================================================
+DOWNLOAD SUMMARY
+==================================================
+Total updates found: 15
+Updates with download URLs: 8
+Updates requiring manual download: 7
+Successful downloads: 6
+Download location: C:\Temp\WindowsUpdates
+
+Updates requiring manual download:
+  - KB5070884: 2025-10 Cumulative Update for Microsoft server operating system version 21H2 for x64-based Systems (KB5070884)
+    Download: https://www.catalog.update.microsoft.com/Search.aspx?q=KB5070884
+  - KB5070123: Security Update for Windows Server 2022 (KB5070123)
+    Download: https://www.catalog.update.microsoft.com/Search.aspx?q=KB5070123
+
+Tip: Visit Microsoft Update Catalog for manual downloads
+==================================================
+```
+
+## Sample Object Properties with Manual Download Information
+
+```powershell
+Computer              : AO-PKI
+KbId                  : 5070884
+Title                 : 2025-10 Cumulative Update for Microsoft server operating system version 21H2 for x64-based Systems (KB5070884)
+IsInstalled           : False
+DownloadURL           : 
+ManualDownloadInfo    : No direct download URL available. Manual download: Microsoft Update Catalog
+MicrosoftCatalogURL   : https://www.catalog.update.microsoft.com/Search.aspx?q=KB5070884
+DownloadNote          : No direct URL - manual download required
+InformationURL        : https://support.microsoft.com/help/5070884
+SupportURL            : https://support.microsoft.com/help/5070884
+```
+
 ## Sample Download Output
 
 ```
@@ -545,20 +587,22 @@ The script automatically detects and displays the Windows Update source:
 
 ## Version Information
 
-- **Version:** 1.3.2
+- **Version:** 1.3.3
 - **Author:** Jan Tiedemann
 - **Copyright:** 2021-2025
 - **GUID:** 4b937790-b06b-427f-8c1f-565030ae0227
 - **Last Updated:** October 2025
 
-### Recent Updates (v1.3.2)
+### Recent Updates (v1.3.3)
+- **NEW: Manual download guidance for updates without direct URLs**
+- Added `ManualDownloadInfo` and `MicrosoftCatalogURL` properties to update objects
+- Enhanced download summaries to show updates requiring manual download
+- Automatic Microsoft Update Catalog URLs for KB articles
+- Improved user messaging when cumulative updates lack direct download URLs
 - **FIXED: WSUS offline scan now working correctly with wsusscn2.cab**
 - Corrected AddScanPackageService implementation (2 parameters instead of 3)
 - Added proper HRESULT error handling for COM object issues
-- Improved offline scan service setup and cleanup
 - Enhanced debugging output for troubleshooting
-- Fixed COM object creation for improved compatibility
-- Added comprehensive troubleshooting documentation
 
 ## Quick Reference
 
@@ -621,6 +665,14 @@ Get-LocalUpdateStatus -ImportReport "C:\Temp\UpdateReport.xml" -DownloadUpdates 
 - **Compatible with all other features (export, download, etc.)**
 - **wsusscn2.cab file size is typically 100-200 MB**
 - **Enhanced SSL/TLS handling** for reliable downloads from Microsoft servers
+
+### Manual Download Support
+- **Automatic detection of updates without direct download URLs**
+- **Microsoft Update Catalog URLs** automatically generated for KB articles  
+- **Detailed manual download guidance** in console output and summary reports
+- **Enhanced download summaries** showing which updates require manual download
+- **Perfect for cumulative updates** that often lack direct download URLs
+- **Clear instructions** for using Microsoft Update Catalog or Windows Update
 
 ## Troubleshooting
 
