@@ -1,6 +1,6 @@
 # Get-LocalUpdateStatus
 
-A PowerShell function that enumerates Windows Updates (both installed and missing) on local or remote computers and returns detailed update information as PowerShell objects.
+A PowerShell function that enumerates Windows Updates (both installed and missing) on local or remote computers and returns detailed update information as PowerShell objects. **Now includes the ability to download update files directly from Microsoft!**
 
 ## Description
 
@@ -10,6 +10,7 @@ This script provides detailed information about Windows Updates including:
 - Hidden updates
 - Update metadata (KB IDs, security bulletins, CVE IDs, severity, etc.)
 - Installation dates and restart requirements
+- **NEW: Direct download capability for updates with available download URLs**
 
 ## Requirements
 
@@ -42,6 +43,17 @@ This script provides detailed information about Windows Updates including:
   - `'IsHidden=0'` - All visible updates
   - `'IsHidden=1'` - Hidden updates
 
+### DownloadUpdates (Optional)
+- **Type:** Switch
+- **Description:** Enable download mode to automatically download update files when DownloadURL is available
+- **Default:** Disabled
+
+### DownloadPath (Optional)
+- **Type:** String
+- **Description:** Directory path where downloaded update files will be saved
+- **Default:** `$env:TEMP\WindowsUpdates`
+- **Validation:** Path must exist or be creatable
+
 ## Usage Examples
 
 ### Get All Installed Updates
@@ -57,6 +69,19 @@ Get-LocalUpdateStatus -ComputerName localhost -UpdateSearchFilter 'IsInstalled=0
 ### Get Hidden Updates
 ```powershell
 Get-LocalUpdateStatus -ComputerName localhost -UpdateSearchFilter 'IsHidden=1'
+```
+
+### Download Missing Updates (NEW!)
+```powershell
+# Download missing updates to default location (%TEMP%\WindowsUpdates)
+Get-LocalUpdateStatus -ComputerName localhost -UpdateSearchFilter 'IsInstalled=0' -DownloadUpdates
+
+# Download to custom location
+Get-LocalUpdateStatus -ComputerName localhost -UpdateSearchFilter 'IsInstalled=0' -DownloadUpdates -DownloadPath "C:\Updates"
+
+# Download only critical and important updates
+Get-LocalUpdateStatus -ComputerName localhost -UpdateSearchFilter 'IsInstalled=0' -DownloadUpdates | 
+    Where-Object { $_.SeverityText -in @('Critical', 'Important') }
 ```
 
 ### Formatted Output Example
@@ -90,6 +115,29 @@ Each update object contains the following properties:
 | `SupportURL` | Support URL |
 | `DownloadURL` | Download URL |
 | `BulletinURL` | Security bulletin URL |
+| `DownloadSuccess` | Download success status (only when `-DownloadUpdates` is used) |
+
+## Download Features
+
+### Automatic File Download
+When using the `-DownloadUpdates` switch, the script will:
+- Create the download directory if it doesn't exist
+- Download update files from Microsoft servers when DownloadURL is available
+- Skip files that already exist in the download location
+- Display download progress and file sizes
+- Provide a comprehensive download summary
+
+### Download Summary
+After download completion, a summary is displayed showing:
+- Total updates found
+- Updates with available download URLs
+- Number of successful downloads
+- Download location path
+
+### File Naming
+Downloaded files are named using:
+1. Original filename from the download URL (preferred)
+2. Fallback format: `KB{KbId}.msu` if no filename is available
 
 ## Sample Output
 
@@ -102,6 +150,28 @@ KbId     IsInstalled InstalledOn          Title                                 
 4580325  True        20.10.2020 00:00:00  2020-10 Sicherheitsupdate für Adobe Flash Player...     Critical
 ```
 
+## Sample Download Output
+
+```
+Windows Update is using Microsoft Update (default)
+
+Created download directory: C:\Temp\WindowsUpdates
+
+Processing update: KB5001234 - 2025-10 Cumulative Update for Windows 10
+  Downloading: windows10.0-kb5001234-x64_abc123.msu
+  From: http://download.windowsupdate.com/c/msdownload/update/software/secu/2025/10/windows10.0-kb5001234-x64_abc123_def456.msu
+  Downloaded successfully: windows10.0-kb5001234-x64_abc123.msu (45.67 MB)
+
+==================================================
+DOWNLOAD SUMMARY
+==================================================
+Total updates found: 15
+Updates with download URLs: 8
+Successful downloads: 7
+Download location: C:\Temp\WindowsUpdates
+==================================================
+```
+
 ## Update Source Detection
 
 The script automatically detects and displays the Windows Update source:
@@ -110,7 +180,7 @@ The script automatically detects and displays the Windows Update source:
 
 ## Version Information
 
-- **Version:** 1.0.3
+- **Version:** 1.1.0
 - **Author:** Jan Tiedemann
 - **Copyright:** 2021
 - **GUID:** 4b937790-b06b-427f-8c1f-565030ae0227
@@ -121,3 +191,6 @@ The script automatically detects and displays the Windows Update source:
 - For remote computers, ensure WinRM is configured and you have administrative access
 - The script uses the Microsoft Update Session COM object for update enumeration
 - Large numbers of updates may take time to process
+- **Download feature requires internet access to Microsoft Update servers**
+- **Downloaded files are standard .msu or .cab files that can be installed manually**
+- **Always verify downloaded files before installation**
