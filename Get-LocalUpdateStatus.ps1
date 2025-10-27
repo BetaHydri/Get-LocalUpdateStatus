@@ -401,7 +401,8 @@ function Get-LocalUpdateStatus {
           
           if ($testResults.Updates.Count -eq 0) {
             Write-Warning "The wsusscn2.cab file appears to be empty or invalid. Try downloading a fresh copy."
-          } else {
+          }
+          else {
             Write-Host "The scan file contains updates, but none match your filter criteria." -ForegroundColor Yellow
             Write-Host "Try different filters like 'IsInstalled=0' or 'IsHidden=0'" -ForegroundColor Yellow
           }
