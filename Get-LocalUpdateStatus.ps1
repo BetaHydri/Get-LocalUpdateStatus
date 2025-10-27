@@ -875,7 +875,13 @@ function Get-LocalUpdateStatus {
           }
           # WU_E_INVALID_CRITERIA
           '80240032' {
-            Write-Error "Invalid search filter: $UpdateSearchFilter"
+            if ($UpdateSearchFilter -match "and" -and $UpdateSearchFilter -match "IsInstalled=0") {
+              Write-Host "Compound filters may not be fully supported in WSUS offline mode." -ForegroundColor Yellow
+              Write-Host "Try using simplified filter 'IsInstalled=0' instead of '$UpdateSearchFilter'" -ForegroundColor Cyan
+              Write-Host "Note: If no missing updates are found, your system is up to date!" -ForegroundColor Green
+            } else {
+              Write-Error "Invalid search filter: $UpdateSearchFilter"
+            }
             return
           }
           default {
