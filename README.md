@@ -545,18 +545,20 @@ The script automatically detects and displays the Windows Update source:
 
 ## Version Information
 
-- **Version:** 1.3.1
+- **Version:** 1.3.2
 - **Author:** Jan Tiedemann
 - **Copyright:** 2021-2025
 - **GUID:** 4b937790-b06b-427f-8c1f-565030ae0227
 - **Last Updated:** October 2025
 
-### Recent Updates (v1.3.1)
+### Recent Updates (v1.3.2)
+- **FIXED: WSUS offline scan now working correctly with wsusscn2.cab**
+- Corrected AddScanPackageService implementation (2 parameters instead of 3)
+- Added proper HRESULT error handling for COM object issues
+- Improved offline scan service setup and cleanup
+- Enhanced debugging output for troubleshooting
 - Fixed COM object creation for improved compatibility
-- Added enhanced error handling for WSUS offline scan
-- Improved debugging and troubleshooting capabilities
 - Added comprehensive troubleshooting documentation
-- Enhanced SSL/TLS support for reliable downloads
 
 ## Quick Reference
 
@@ -628,7 +630,9 @@ Get-LocalUpdateStatus -ImportReport "C:\Temp\UpdateReport.xml" -DownloadUpdates 
 
 **Problem:** WSUS offline scan shows "Found 0 updates" even when updates should be available.
 
-**Possible Causes and Solutions:**
+**Status:** ✅ **FIXED in v1.3.2** - The main COM object implementation issue has been resolved.
+
+**If you still experience issues, check these common causes:**
 
 1. **Administrator Rights Required**
    ```

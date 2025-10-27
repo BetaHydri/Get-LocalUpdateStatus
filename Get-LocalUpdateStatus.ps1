@@ -1,7 +1,7 @@
 <#
 PSScriptInfo
 
-.VERSION 1.3.0
+.VERSION 1.3.2
 
 .GUID 4b937790-b06b-427f-8c1f-565030ae0227
 
@@ -342,27 +342,49 @@ function Get-LocalUpdateStatus {
       $session = New-Object -ComObject Microsoft.Update.Session
       $searcher = $session.CreateUpdateSearcher()
       
-      # Set up offline scanning using the .cab file
-      $searcher.Online = $false
-      $searcher.SearchScope = 1  # MachineOnly
-      
-      # For offline scanning, we need to set the server selection to use the local .cab file
+      # Create the service manager for offline scanning
       $updateServiceManager = New-Object -ComObject Microsoft.Update.ServiceManager
-      Write-Host "Adding scan package service for file: $scanFile" -ForegroundColor Gray
       
-      # Try different approaches for the scan package service
+      Write-Host "Setting up offline scan service..." -ForegroundColor Gray
+      
+      # Add the scan package service using the wsusscn2.cab file
+      # This is the correct way - only 2 parameters, not 3
       try {
-        $updateService = $updateServiceManager.AddScanPackageService("Offline Sync Service", $scanFile, 1)
+        $updateService = $updateServiceManager.AddScanPackageService("Offline Sync Service", $scanFile)
         Write-Host "Service ID: $($updateService.ServiceID)" -ForegroundColor Gray
-        $searcher.ServerSelection = 3  # ssOthers
+        
+        # Configure the searcher to use our offline service
+        $searcher.ServerSelection = 3  # ssOthers (use specified service)
         $searcher.ServiceID = $updateService.ServiceID
+        
+        Write-Host "Offline scan service configured successfully" -ForegroundColor Green
       }
       catch {
-        Write-Host "AddScanPackageService failed, trying alternative approach..." -ForegroundColor Yellow
-        # Alternative: Try using the scan package directly
-        $updateService = $updateServiceManager.AddScanPackageService("OfflineSyncService", $scanFile)
-        $searcher.ServerSelection = 3  # ssOthers  
-        $searcher.ServiceID = $updateService.ServiceID
+        $exceptionObject = $_
+        $hresult = '{0:x}' -f $exceptionObject.Exception.GetBaseException().HResult
+        
+        switch ($hresult) {
+          # E_ACCESSDENIED
+          '80070005' {
+            Write-Error "AddScanPackageService received an AccessDenied exception. Run PowerShell as Administrator."
+            return
+          }
+          # E_INVALIDARG  
+          '80070057' {
+            Write-Error "AddScanPackageService received invalid arguments. Check that the wsusscn2.cab file is valid."
+            return
+          }
+          # File not found
+          '80070002' {
+            Write-Error "wsusscn2.cab file could not be found: $scanFile"
+            return
+          }
+          default {
+            Write-Error "Error setting up offline scan service: $($_.Exception.Message)"
+            Write-Host "HRESULT: 0x$hresult" -ForegroundColor Red
+            return
+          }
+        }
       }
       
       # Perform offline scan with specified filter criteria
@@ -370,17 +392,57 @@ function Get-LocalUpdateStatus {
       try {
         $results = $searcher.Search($UpdateSearchFilter)
         Write-Host "Found $($results.Updates.Count) updates via offline scan" -ForegroundColor Green
+        
+        # If we found 0 updates, let's try a broader search to verify the scan is working
+        if ($results.Updates.Count -eq 0) {
+          Write-Host "No updates found with current filter. Testing with broader search..." -ForegroundColor Yellow
+          $testResults = $searcher.Search("1=1")  # Search for all updates
+          Write-Host "Total updates in scan file: $($testResults.Updates.Count)" -ForegroundColor Cyan
+          
+          if ($testResults.Updates.Count -eq 0) {
+            Write-Warning "The wsusscn2.cab file appears to be empty or invalid. Try downloading a fresh copy."
+          } else {
+            Write-Host "The scan file contains updates, but none match your filter criteria." -ForegroundColor Yellow
+            Write-Host "Try different filters like 'IsInstalled=0' or 'IsHidden=0'" -ForegroundColor Yellow
+          }
+        }
       }
       catch {
-        Write-Error "Error during offline scan: $($_.Exception.Message)"
-        Write-Host "Debug: Searcher Online = $($searcher.Online), ServerSelection = $($searcher.ServerSelection), ServiceID = $($searcher.ServiceID)" -ForegroundColor Red
-        # Clean up and exit
-        try { $updateServiceManager.RemoveService($updateService.ServiceID) } catch {}
-        return
+        $exceptionObject = $_
+        $hresult = '{0:x}' -f $exceptionObject.Exception.GetBaseException().HResult
+        
+        switch ($hresult) {
+          # WU_E_LEGACYSERVER
+          '80244003' {
+            Write-Error "Target is Microsoft Software Update Services (SUS) 1.0 server."
+            return
+          }
+          # E_POINTER
+          '8024002B' {
+            Write-Error "Search received invalid argument: $UpdateSearchFilter"
+            return
+          }
+          # WU_E_INVALID_CRITERIA
+          '80240032' {
+            Write-Error "Invalid search filter: $UpdateSearchFilter"
+            return
+          }
+          default {
+            Write-Error "Error during offline scan: $($_.Exception.Message)"
+            Write-Host "HRESULT: 0x$hresult" -ForegroundColor Red
+            return
+          }
+        }
       }
       
       # Clean up the temporary service
-      $updateServiceManager.RemoveService($updateService.ServiceID)
+      Write-Host "Cleaning up offline scan service..." -ForegroundColor Gray
+      try {
+        $updateServiceManager.RemoveService($updateService.ServiceID)
+      }
+      catch {
+        Write-Warning "Could not remove temporary service: $($_.Exception.Message)"
+      }
       
       # Process results similar to normal scan
       $MyUpdates = @()
@@ -503,6 +565,19 @@ function Get-LocalUpdateStatus {
     }
     catch {
       Write-Error "WSUS offline scan failed: $($_.Exception.Message)"
+      Write-Host "`nDetailed error information:" -ForegroundColor Red
+      Write-Host "  Error Type: $($_.Exception.GetType().Name)" -ForegroundColor Red
+      Write-Host "  Scan File: $scanFile" -ForegroundColor Red
+      Write-Host "  File Exists: $(Test-Path $scanFile)" -ForegroundColor Red
+      if (Test-Path $scanFile) {
+        $fileInfo = Get-Item $scanFile
+        Write-Host "  File Size: $([math]::Round($fileInfo.Length / 1MB, 2)) MB" -ForegroundColor Red
+      }
+      Write-Host "`nTroubleshooting suggestions:" -ForegroundColor Yellow
+      Write-Host "  1. Ensure you're running PowerShell as Administrator" -ForegroundColor Yellow
+      Write-Host "  2. Verify wsusscn2.cab is a valid Microsoft file (100-200MB)" -ForegroundColor Yellow
+      Write-Host "  3. Try downloading a fresh wsusscn2.cab from Microsoft" -ForegroundColor Yellow
+      Write-Host "  4. Use absolute path instead of relative path" -ForegroundColor Yellow
       return
     }
   }
