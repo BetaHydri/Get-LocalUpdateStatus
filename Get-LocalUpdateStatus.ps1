@@ -21,7 +21,7 @@ Supports WSUS offline scanning using wsusscn2.cab for air-gapped environments.
 Includes interactive installation confirmation and detailed batch processing summaries.
 #>
 
-# Helper function to install updates
+# Helper function to install updates (.cab via DISM, .msu via WUSA, .exe via silent execution)
 function Invoke-UpdateInstallation {
   param(
     [string]$FilePath,
@@ -97,9 +97,54 @@ function Invoke-UpdateInstallation {
         }
       }
       
+      '.exe' {
+        # Use direct execution for .exe files with silent installation switches
+        Write-Host "  Using silent execution for .exe installation..." -ForegroundColor Gray
+        
+        # Common silent switches for Microsoft executable updates
+        $exeArgs = @()
+        
+        # Try to determine appropriate silent switches based on filename/title
+        if ($fileName -match "malicious|removal|tool|msrt" -or $Title -match "Malicious Software Removal Tool") {
+          # Windows Malicious Software Removal Tool uses /Q
+          $exeArgs = @('/Q')
+          Write-Host "  Detected Malicious Software Removal Tool - using /Q switch" -ForegroundColor Gray
+        }
+        elseif ($fileName -match "defender|antimalware" -or $Title -match "Defender|Antimalware") {
+          # Windows Defender updates often use /q
+          $exeArgs = @('/q')
+          Write-Host "  Detected Defender/Antimalware update - using /q switch" -ForegroundColor Gray
+        }
+        else {
+          # Generic Microsoft executable updates - try common silent switches
+          $exeArgs = @('/quiet')
+          Write-Host "  Using generic silent switch: /quiet" -ForegroundColor Gray
+        }
+        
+        $process = Start-Process -FilePath $FilePath -ArgumentList $exeArgs -Wait -PassThru -NoNewWindow
+        
+        if ($process.ExitCode -eq 0) {
+          Write-Host "  Installation successful: $fileName" -ForegroundColor Green
+          return $true
+        }
+        elseif ($process.ExitCode -eq 3010) {
+          Write-Host "  Installation successful (restart required): $fileName" -ForegroundColor Yellow
+          return $true
+        }
+        elseif ($process.ExitCode -eq 1) {
+          Write-Host "  Installation completed with warnings: $fileName" -ForegroundColor Yellow
+          return $true
+        }
+        else {
+          Write-Host "  Installation failed: $fileName (Exit code: $($process.ExitCode))" -ForegroundColor Red
+          Write-Host "  Note: Some .exe files may require specific switches or manual installation" -ForegroundColor Gray
+          return $false
+        }
+      }
+      
       default {
         Write-Host "  Installation failed: Unsupported file type '$fileExtension' for $fileName" -ForegroundColor Red
-        Write-Host "  Supported types: .cab (DISM), .msu (WUSA)" -ForegroundColor Gray
+        Write-Host "  Supported types: .cab (DISM), .msu (WUSA), .exe (Silent)" -ForegroundColor Gray
         return $false
       }
     }

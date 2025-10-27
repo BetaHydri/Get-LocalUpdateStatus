@@ -57,8 +57,8 @@ This script provides detailed information about Windows Updates including:
 - **Description:** Automatically install downloaded updates using DISM (.cab) or WUSA (.msu) in batch mode
 - **Requirements:** Must be used with `-DownloadUpdates` parameter
 - **Workflow:** Downloads all updates first, then asks for confirmation before batch installation
-- **Supported Formats:** .cab files (via DISM), .msu files (via WUSA)
-- **Installation Flags:** Uses /Quiet /NoRestart (DISM) and /quiet /norestart (WUSA)
+- **Supported Formats:** .cab files (via DISM), .msu files (via WUSA), .exe files (via silent execution)
+- **Installation Flags:** Uses /Quiet /NoRestart (DISM), /quiet /norestart (WUSA), intelligent silent switches (.exe)
 - **Interactive Confirmation:** Prompts user before starting installation phase
 - **Admin Required:** Requires Administrator privileges for installation
 - **Progress Visualization:** Shows detailed progress for each installation
@@ -377,12 +377,24 @@ When using the `-InstallUpdates` switch with `-DownloadUpdates`:
 - **Progress visualization:** Real-time installation progress with timing
 - **Comprehensive logging:** Detailed success/failure tracking for each update
 - **Silent installation:** Uses appropriate flags to minimize user interaction
+- **Multiple file types:** Supports .cab (DISM), .msu (WUSA), and .exe (silent execution) files
+- **Intelligent .exe handling:** Automatically detects appropriate silent switches for different update types
 - **No automatic restart:** Manual restart required after installation completes
 
 ### File Naming
 Downloaded files are named using:
 1. Original filename from the download URL (preferred)
 2. Fallback format: `KB{KbId}.msu` if no filename is available
+
+### Supported Update File Types
+The script supports installation of multiple update file formats:
+- **.cab files**: Installed via DISM with `/Online /Add-Package /Quiet /NoRestart`
+- **.msu files**: Installed via WUSA with `/quiet /norestart`
+- **.exe files**: Installed with intelligent silent switches:
+  - **Malicious Software Removal Tool**: Uses `/Q` switch
+  - **Windows Defender/Antimalware updates**: Uses `/q` switch  
+  - **Generic Microsoft executables**: Uses `/quiet` switch
+  - **Smart detection**: Automatically identifies update type by filename and title patterns
 
 ## Air-gapped Environment Workflow
 
@@ -777,25 +789,35 @@ Total updates to install: 3
   Duration: 00:52
   Progress: 3 successful, 0 failed, 0 remaining
 
+[4/4] Installing MRT
+  Title: Windows Malicious Software Removal Tool x64
+  File: MRT.exe
+  Installing: MRT.exe
+  Using silent execution for .exe installation...
+  Detected Malicious Software Removal Tool - using /Q switch
+  Status: Installation completed successfully
+  Duration: 01:15
+  Progress: 4 successful, 0 failed, 0 remaining
+
 ============================================================
 BATCH INSTALLATION COMPLETED
 ============================================================
-Total updates processed: 3
-Successful installations: 3
+Total updates processed: 4
+Successful installations: 4
 Failed installations: 0
 Success rate: 100.0%
 
-Recommendation: Restart the computer to complete the installation of 3 update(s)
+Recommendation: Restart the computer to complete the installation of 4 update(s)
 ============================================================
 
 ============================================================
 FINAL DOWNLOAD & INSTALLATION SUMMARY
 ============================================================
-Total updates found: 5
-Updates with download URLs: 3
+Total updates found: 6
+Updates with download URLs: 4
 Updates requiring manual download: 2
-Successful downloads: 3
-Successful installations: 3
+Successful downloads: 4
+Successful installations: 4
 Download location: C:\Temp\WindowsUpdates
 ============================================================
 ```
@@ -995,6 +1017,10 @@ Get-LocalUpdateStatus -ImportReport "C:\Temp\UpdateReport.xml" -DownloadUpdates 
 - **Real-time progress visualization** with detailed timing and success/failure tracking
 - **DISM integration** for .cab file installation with enhanced error handling and logging
 - **WUSA integration** for .msu file installation with comprehensive status tracking  
+- **Silent .exe execution** for executable updates with intelligent switch detection
+- **Malicious Software Removal Tool support** with automatic /Q switch detection
+- **Windows Defender update support** with appropriate /q switch usage
+- **Generic executable support** with /quiet fallback for other Microsoft .exe updates
 - **No restart requirement enforcement** - installations use /NoRestart and /norestart flags
 - **Comprehensive error handling** with proper exit code interpretation and detailed logging
 - **Installation status and timing tracking** in result objects (InstallSuccess, InstallDuration, InstallationTime properties)
@@ -1067,6 +1093,32 @@ Get-LocalUpdateStatus -ImportReport "C:\Temp\UpdateReport.xml" -DownloadUpdates 
 - Run PowerShell as Administrator
 - Ensure write permissions to download/export directories
 - Use locations where the user has full control (e.g., C:\Temp instead of system directories)
+
+#### .exe Installation Issues
+
+**Problem:** Executable updates fail to install silently
+
+**Common Solutions:**
+- **Verify Administrator privileges** - .exe installations require admin rights
+- **Check silent switch compatibility** - Some executables may require different switches
+- **Manual installation fallback** - If silent installation fails, install manually
+- **Supported .exe types:**
+  - Windows Malicious Software Removal Tool (MRT.exe) - uses `/Q`
+  - Windows Defender/Antimalware updates - uses `/q`
+  - Generic Microsoft executables - uses `/quiet`
+
+**Manual Installation:**
+If automatic .exe installation fails, you can install manually:
+```powershell
+# For Malicious Software Removal Tool
+.\MRT.exe /Q
+
+# For Defender updates  
+.\DefenderUpdate.exe /q
+
+# For other Microsoft executables
+.\UpdateFile.exe /quiet
+```
 
 #### Remote Computer Access
 
