@@ -38,12 +38,33 @@ function Invoke-UpdateInstallation {
   $fileExtension = [System.IO.Path]::GetExtension($FilePath).ToLower()
   $fileName = Split-Path $FilePath -Leaf
   
+  # Special handling for Azure Connected Machine Agent
+  if ($Title -like "*AzureConnectedMachineAgent*" -or $fileName -like "*azureconnectedmachineagent*") {
+    Write-Host "  Detected Azure Connected Machine Agent update - using specialized installation method..." -ForegroundColor Yellow
+    
+    # For Azure Connected Machine Agent, try direct service-based installation
+    try {
+      Write-Host "  Stopping Azure Connected Machine Agent services..." -ForegroundColor Gray
+      $services = @("himds", "AzureConnectedMachineAgent")
+      foreach ($svc in $services) {
+        $service = Get-Service -Name $svc -ErrorAction SilentlyContinue
+        if ($service -and $service.Status -eq 'Running') {
+          Stop-Service -Name $svc -Force -ErrorAction SilentlyContinue
+          Start-Sleep -Seconds 2
+        }
+      }
+    }
+    catch {
+      Write-Host "  Warning: Could not stop Azure services: $($_.Exception.Message)" -ForegroundColor Yellow
+    }
+  }
+  
   Write-Host "  Installing: $fileName" -ForegroundColor Cyan
   
   try {
     switch ($fileExtension) {
       '.cab' {
-        # Use DISM for .cab files
+        # Use DISM for .cab files (primary method)
         Write-Host "  Using DISM for .cab installation..." -ForegroundColor Gray
         $dismArgs = @(
           '/Online'
@@ -61,6 +82,55 @@ function Invoke-UpdateInstallation {
         }
         elseif ($process.ExitCode -eq 3010) {
           Write-Host "  Installation successful (restart required): $fileName" -ForegroundColor Yellow
+          return $true
+        }
+        elseif ($process.ExitCode -eq 2) {
+          # DISM exit code 2: Invalid command line or access denied
+          Write-Host "  DISM failed (exit code 2: Invalid command or access denied), trying alternative method..." -ForegroundColor Yellow
+          
+          # Try using expand command as fallback for certain .cab files
+          try {
+            $tempDir = Join-Path $env:TEMP "CabExtract_$([System.Guid]::NewGuid().ToString('N')[0..7] -join '')"
+            New-Item -Path $tempDir -ItemType Directory -Force | Out-Null
+            
+            Write-Host "  Attempting .cab extraction and manual installation..." -ForegroundColor Gray
+            $expandProcess = Start-Process -FilePath 'expand.exe' -ArgumentList @("-F:*", $FilePath, $tempDir) -Wait -PassThru -NoNewWindow
+            
+            if ($expandProcess.ExitCode -eq 0) {
+              # Look for .msu files in extracted content
+              $msuFiles = Get-ChildItem -Path $tempDir -Filter "*.msu" -Recurse
+              if ($msuFiles) {
+                foreach ($msuFile in $msuFiles) {
+                  Write-Host "  Found extracted .msu file, installing with WUSA..." -ForegroundColor Gray
+                  $wusaProcess = Start-Process -FilePath 'wusa.exe' -ArgumentList @($msuFile.FullName, '/quiet', '/norestart') -Wait -PassThru -NoNewWindow
+                  if ($wusaProcess.ExitCode -eq 0 -or $wusaProcess.ExitCode -eq 3010) {
+                    Remove-Item -Path $tempDir -Recurse -Force -ErrorAction SilentlyContinue
+                    Write-Host "  Installation successful via extracted .msu: $fileName" -ForegroundColor Green
+                    return $true
+                  }
+                }
+              }
+            }
+            
+            Remove-Item -Path $tempDir -Recurse -Force -ErrorAction SilentlyContinue
+            Write-Host "  Alternative installation methods failed: $fileName" -ForegroundColor Red
+            return $false
+          }
+          catch {
+            Write-Host "  Alternative installation failed with error: $($_.Exception.Message)" -ForegroundColor Red
+            return $false
+          }
+        }
+        elseif ($process.ExitCode -eq 50) {
+          Write-Host "  Installation skipped: Package not applicable to this system - $fileName" -ForegroundColor Yellow
+          return $true
+        }
+        elseif ($process.ExitCode -eq 87) {
+          Write-Host "  Installation failed: Invalid parameter - $fileName (Exit code: 87)" -ForegroundColor Red
+          return $false
+        }
+        elseif ($process.ExitCode -eq 1460) {
+          Write-Host "  Installation failed: Package already installed - $fileName" -ForegroundColor Yellow
           return $true
         }
         else {
