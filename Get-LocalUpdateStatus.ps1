@@ -91,9 +91,9 @@ function Invoke-UpdateInstallation {
           
           # Special handling for Azure Connected Machine Agent (improved detection)
           $isAzureAgent = ($Title -like "*AzureConnectedMachineAgent*") -or 
-                         ($Title -like "*Azure Connected Machine Agent*") -or
-                         ($fileName -like "*azureconnectedmachineagent*") -or
-                         ($fileName -like "*azure*connected*machine*agent*")
+          ($Title -like "*Azure Connected Machine Agent*") -or
+          ($fileName -like "*azureconnectedmachineagent*") -or
+          ($fileName -like "*azure*connected*machine*agent*")
           
           Write-Host "  DEBUG: Azure agent detection result: $isAzureAgent" -ForegroundColor Magenta
           
