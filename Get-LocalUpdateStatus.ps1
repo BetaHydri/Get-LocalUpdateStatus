@@ -176,6 +176,7 @@ function Get-LocalUpdateStatus {
     [System.String]$ComputerName,
 
     [Parameter(Position = 1, Mandatory = $true, ParameterSetName = 'ComputerName')]
+    [Parameter(Position = 4, Mandatory = $true, ParameterSetName = 'WSUSOfflineScan')]
     [ValidateNotNullOrEmpty()]
     [ValidateSet('IsHidden=0 and IsInstalled=0', 'IsHidden=0 and IsInstalled=1', 'IsInstalled=1', 'IsInstalled=0', 'IsHidden=0', 'IsHidden=1')]
     [System.String]$UpdateSearchFilter,
@@ -351,14 +352,14 @@ function Get-LocalUpdateStatus {
       $searcher.ServerSelection = 3  # ssOthers
       $searcher.ServiceID = $updateService.ServiceID
       
-      # Perform offline scan - only search for missing updates in offline mode
-      Write-Host "Performing offline scan for missing updates..." -ForegroundColor Yellow
-      $results = $searcher.Search("IsInstalled=0")
+      # Perform offline scan with specified filter criteria
+      Write-Host "Performing offline scan with filter: $UpdateSearchFilter..." -ForegroundColor Yellow
+      $results = $searcher.Search($UpdateSearchFilter)
       
       # Clean up the temporary service
       $updateServiceManager.RemoveService($updateService.ServiceID)
       
-      Write-Host "Found $($results.Updates.Count) missing updates via offline scan" -ForegroundColor Green
+      Write-Host "Found $($results.Updates.Count) updates via offline scan" -ForegroundColor Green
       
       # Process results similar to normal scan
       $MyUpdates = @()
@@ -462,7 +463,8 @@ function Get-LocalUpdateStatus {
       Write-Host "WSUS OFFLINE SCAN SUMMARY" -ForegroundColor Cyan
       Write-Host "="*50 -ForegroundColor Cyan
       Write-Host "Scan file used: $(Split-Path $scanFile -Leaf)" -ForegroundColor White
-      Write-Host "Total missing updates: $totalUpdates" -ForegroundColor White
+      Write-Host "Search filter: $UpdateSearchFilter" -ForegroundColor White
+      Write-Host "Total updates found: $totalUpdates" -ForegroundColor White
       Write-Host "Critical updates: $criticalUpdates" -ForegroundColor Red
       Write-Host "Important updates: $importantUpdates" -ForegroundColor Yellow
       
