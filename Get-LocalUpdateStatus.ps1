@@ -121,7 +121,7 @@ function Get-WSUSScanFile {
 # Enum for Severity (defined once for the entire script)
 # Check if the type already exists before defining it
 if (-not ([System.Management.Automation.PSTypeName]'MsrcSeverity').Type) {
-    Add-Type -TypeDefinition '
+  Add-Type -TypeDefinition '
     public enum MsrcSeverity {
       Unspecified,
       Low,
@@ -303,13 +303,22 @@ function Get-LocalUpdateStatus {
       $session = [microsoft.visualbasic.interaction]::CreateObject("Microsoft.Update.Session", $ComputerName)
       $searcher = $session.CreateUpdateSearcher()
       
-      # Set offline mode and scan file path
+      # Set up offline scanning using the .cab file
       $searcher.Online = $false
       $searcher.SearchScope = 1  # MachineOnly
       
+      # For offline scanning, we need to set the server selection to use the local .cab file
+      $updateServiceManager = [microsoft.visualbasic.interaction]::CreateObject("Microsoft.Update.ServiceManager")
+      $updateService = $updateServiceManager.AddScanPackageService("Offline Sync Service", $scanFile, 1)
+      $searcher.ServerSelection = 3  # ssOthers
+      $searcher.ServiceID = $updateService.ServiceID
+      
       # Perform offline scan - only search for missing updates in offline mode
       Write-Host "Performing offline scan for missing updates..." -ForegroundColor Yellow
-      $results = $searcher.Search("IsInstalled=0", $scanFile)
+      $results = $searcher.Search("IsInstalled=0")
+      
+      # Clean up the temporary service
+      $updateServiceManager.RemoveService($updateService.ServiceID)
       
       Write-Host "Found $($results.Updates.Count) missing updates via offline scan" -ForegroundColor Green
       
