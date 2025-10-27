@@ -1,7 +1,7 @@
 <#
 PSScriptInfo
 
-.VERSION 1.3.3
+.VERSION 1.4.0
 
 .GUID 4b937790-b06b-427f-8c1f-565030ae0227
 
@@ -20,13 +20,103 @@ Supports exporting scan results and importing them on other machines for downloa
 Supports WSUS offline scanning using wsusscn2.cab for air-gapped environments.
 #>
 
+# Helper function to install updates
+function Invoke-UpdateInstallation {
+  param(
+    [string]$FilePath,
+    [string]$KbId,
+    [string]$Title
+  )
+  
+  if (-not (Test-Path $FilePath)) {
+    Write-Host "  Installation failed: File not found - $FilePath" -ForegroundColor Red
+    return $false
+  }
+
+  $fileExtension = [System.IO.Path]::GetExtension($FilePath).ToLower()
+  $fileName = Split-Path $FilePath -Leaf
+  
+  Write-Host "  Installing: $fileName" -ForegroundColor Cyan
+  
+  try {
+    switch ($fileExtension) {
+      '.cab' {
+        # Use DISM for .cab files
+        Write-Host "  Using DISM for .cab installation..." -ForegroundColor Gray
+        $dismArgs = @(
+          '/Online'
+          '/Add-Package'
+          "/PackagePath:$FilePath"
+          '/Quiet'
+          '/NoRestart'
+        )
+        
+        $process = Start-Process -FilePath 'DISM.exe' -ArgumentList $dismArgs -Wait -PassThru -NoNewWindow
+        
+        if ($process.ExitCode -eq 0) {
+          Write-Host "  Installation successful: $fileName" -ForegroundColor Green
+          return $true
+        }
+        elseif ($process.ExitCode -eq 3010) {
+          Write-Host "  Installation successful (restart required): $fileName" -ForegroundColor Yellow
+          return $true
+        }
+        else {
+          Write-Host "  Installation failed: $fileName (Exit code: $($process.ExitCode))" -ForegroundColor Red
+          return $false
+        }
+      }
+      
+      '.msu' {
+        # Use WUSA for .msu files
+        Write-Host "  Using WUSA for .msu installation..." -ForegroundColor Gray
+        $wusaArgs = @(
+          "$FilePath"
+          '/quiet'
+          '/norestart'
+        )
+        
+        $process = Start-Process -FilePath 'wusa.exe' -ArgumentList $wusaArgs -Wait -PassThru -NoNewWindow
+        
+        if ($process.ExitCode -eq 0) {
+          Write-Host "  Installation successful: $fileName" -ForegroundColor Green
+          return $true
+        }
+        elseif ($process.ExitCode -eq 3010) {
+          Write-Host "  Installation successful (restart required): $fileName" -ForegroundColor Yellow
+          return $true
+        }
+        elseif ($process.ExitCode -eq -2145124329) {
+          Write-Host "  Installation skipped: Update already installed - $fileName" -ForegroundColor Yellow
+          return $true
+        }
+        else {
+          Write-Host "  Installation failed: $fileName (Exit code: $($process.ExitCode))" -ForegroundColor Red
+          return $false
+        }
+      }
+      
+      default {
+        Write-Host "  Installation failed: Unsupported file type '$fileExtension' for $fileName" -ForegroundColor Red
+        Write-Host "  Supported types: .cab (DISM), .msu (WUSA)" -ForegroundColor Gray
+        return $false
+      }
+    }
+  }
+  catch {
+    Write-Host "  Installation failed: $($_.Exception.Message)" -ForegroundColor Red
+    return $false
+  }
+}
+
 # Helper function to download updates
 function Invoke-UpdateDownload {
   param(
     [string]$Url,
     [string]$DestinationPath,
     [string]$KbId,
-    [string]$Title
+    [string]$Title,
+    [bool]$InstallAfterDownload = $false
   )
   
   if ([string]::IsNullOrWhiteSpace($Url)) {
@@ -45,6 +135,18 @@ function Invoke-UpdateDownload {
     # Check if file already exists
     if (Test-Path $fullPath) {
       Write-Host "  File already exists: $fileName" -ForegroundColor Yellow
+      
+      # Install update if requested and file exists
+      if ($InstallAfterDownload) {
+        Write-Host "  Installing existing file..." -ForegroundColor Cyan
+        $installSuccess = Invoke-UpdateInstallation -FilePath $fullPath -KbId $KbId -Title $Title
+        return @{
+          DownloadSuccess = $true
+          InstallSuccess = $installSuccess
+          FilePath = $fullPath
+        }
+      }
+      
       return $true
     }
 
@@ -63,6 +165,17 @@ function Invoke-UpdateDownload {
       $fileSize = (Get-Item $fullPath).Length
       $fileSizeMB = [math]::Round($fileSize / 1MB, 2)
       Write-Host "  Downloaded successfully: $fileName ($fileSizeMB MB)" -ForegroundColor Green
+      
+      # Install update if requested
+      if ($InstallAfterDownload) {
+        $installSuccess = Invoke-UpdateInstallation -FilePath $fullPath -KbId $KbId -Title $Title
+        return @{
+          DownloadSuccess = $true
+          InstallSuccess = $installSuccess
+          FilePath = $fullPath
+        }
+      }
+      
       return $true
     }
     else {
@@ -185,6 +298,9 @@ function Get-LocalUpdateStatus {
     [Switch]$DownloadUpdates,
 
     [Parameter(Position = 3, Mandatory = $false)]
+    [Switch]$InstallUpdates,
+
+    [Parameter(Position = 4, Mandatory = $false)]
     [ValidateScript({
         if ($_ -and -not (Test-Path $_ -PathType Container)) {
           throw "Download path '$_' does not exist or is not a directory."
@@ -193,7 +309,7 @@ function Get-LocalUpdateStatus {
       })]
     [System.String]$DownloadPath = "$env:TEMP\WindowsUpdates",
 
-    [Parameter(Position = 4, Mandatory = $false)]
+    [Parameter(Position = 5, Mandatory = $false)]
     [System.String]$ExportReport,
 
     [Parameter(Mandatory = $true, ParameterSetName = 'ImportReport')]
@@ -229,6 +345,12 @@ function Get-LocalUpdateStatus {
     Write-Host "This script needs to be run As Admin" -ForegroundColor Red
     Write-Host "Furthermore, the user should be Admin on each computer/server from where you want to gather the Windows Update status!" -ForegroundColor Yellow
     break
+  }
+
+  # Validate parameter combinations
+  if ($InstallUpdates -and -not $DownloadUpdates) {
+    Write-Error "InstallUpdates requires DownloadUpdates to be enabled. Use both -DownloadUpdates and -InstallUpdates parameters."
+    return
   }
 
   # Handle import report mode
@@ -267,11 +389,22 @@ function Get-LocalUpdateStatus {
         foreach ($update in $importedData) {
           if ($update.DownloadURL) {
             Write-Host "`nProcessing imported update: KB$($update.KbId) - $($update.Title)" -ForegroundColor White
-            $downloadSuccess = Invoke-UpdateDownload -Url $update.DownloadURL -DestinationPath $DownloadPath -KbId $update.KbId -Title $update.Title
-            $update | Add-Member -MemberType NoteProperty -Name DownloadSuccess -Value $downloadSuccess -Force
+            $downloadResult = Invoke-UpdateDownload -Url $update.DownloadURL -DestinationPath $DownloadPath -KbId $update.KbId -Title $update.Title -InstallAfterDownload $InstallUpdates
+            
+            if ($InstallUpdates -and ($downloadResult -is [hashtable])) {
+              $update | Add-Member -MemberType NoteProperty -Name DownloadSuccess -Value $downloadResult.DownloadSuccess -Force
+              $update | Add-Member -MemberType NoteProperty -Name InstallSuccess -Value $downloadResult.InstallSuccess -Force
+              $update | Add-Member -MemberType NoteProperty -Name InstalledFilePath -Value $downloadResult.FilePath -Force
+            }
+            else {
+              $update | Add-Member -MemberType NoteProperty -Name DownloadSuccess -Value $downloadResult -Force
+            }
           }
           else {
             $update | Add-Member -MemberType NoteProperty -Name DownloadSuccess -Value $false -Force
+            if ($InstallUpdates) {
+              $update | Add-Member -MemberType NoteProperty -Name InstallSuccess -Value $false -Force
+            }
           }
           $MyUpdates += $update
         }
@@ -281,12 +414,23 @@ function Get-LocalUpdateStatus {
         $updatesWithUrls = ($MyUpdates | Where-Object { $_.DownloadURL }).Count
         $successfulDownloads = ($MyUpdates | Where-Object { $_.DownloadSuccess -eq $true }).Count
         
+        $summaryTitle = if ($InstallUpdates) { "IMPORT, DOWNLOAD & INSTALLATION SUMMARY" } else { "IMPORT & DOWNLOAD SUMMARY" }
         Write-Host "`n" + "="*50 -ForegroundColor Cyan
-        Write-Host "IMPORT & DOWNLOAD SUMMARY" -ForegroundColor Cyan
+        Write-Host $summaryTitle -ForegroundColor Cyan
         Write-Host "="*50 -ForegroundColor Cyan
         Write-Host "Total updates imported: $totalUpdates" -ForegroundColor White
         Write-Host "Updates with download URLs: $updatesWithUrls" -ForegroundColor White
         Write-Host "Successful downloads: $successfulDownloads" -ForegroundColor Green
+        
+        if ($InstallUpdates) {
+          $successfulInstallations = ($MyUpdates | Where-Object { $_.InstallSuccess -eq $true }).Count
+          $failedInstallations = ($MyUpdates | Where-Object { $_.InstallSuccess -eq $false -and $_.DownloadSuccess -eq $true }).Count
+          Write-Host "Successful installations: $successfulInstallations" -ForegroundColor Green
+          if ($failedInstallations -gt 0) {
+            Write-Host "Failed installations: $failedInstallations" -ForegroundColor Red
+          }
+        }
+        
         Write-Host "Download location: $DownloadPath" -ForegroundColor White
         Write-Host "="*50 -ForegroundColor Cyan
         
@@ -517,8 +661,16 @@ function Get-LocalUpdateStatus {
           $kbId = $update.KBArticleIDs | Select-Object -First 1
           Write-Host "`nProcessing update: KB$kbId - $($update.Title)" -ForegroundColor White
           
-          $downloadSuccess = Invoke-UpdateDownload -Url $downloadUrl -DestinationPath $DownloadPath -KbId $kbId -Title $update.Title
-          $updates | Add-Member -MemberType NoteProperty -Name DownloadSuccess -Value $downloadSuccess -Force
+          $downloadResult = Invoke-UpdateDownload -Url $downloadUrl -DestinationPath $DownloadPath -KbId $kbId -Title $update.Title -InstallAfterDownload $InstallUpdates
+          
+          if ($InstallUpdates -and ($downloadResult -is [hashtable])) {
+            $updates | Add-Member -MemberType NoteProperty -Name DownloadSuccess -Value $downloadResult.DownloadSuccess -Force
+            $updates | Add-Member -MemberType NoteProperty -Name InstallSuccess -Value $downloadResult.InstallSuccess -Force
+            $updates | Add-Member -MemberType NoteProperty -Name InstalledFilePath -Value $downloadResult.FilePath -Force
+          }
+          else {
+            $updates | Add-Member -MemberType NoteProperty -Name DownloadSuccess -Value $downloadResult -Force
+          }
         }
         elseif ($DownloadUpdates -and -not $downloadUrl) {
           $kbId = $update.KBArticleIDs | Select-Object -First 1
@@ -530,6 +682,9 @@ function Get-LocalUpdateStatus {
           Write-Host "  Alternative: Use Windows Update, WSUS, or Microsoft Update Catalog" -ForegroundColor Gray
           $updates | Add-Member -MemberType NoteProperty -Name DownloadSuccess -Value $false -Force
           $updates | Add-Member -MemberType NoteProperty -Name DownloadNote -Value "No direct URL - manual download required" -Force
+          if ($InstallUpdates) {
+            $updates | Add-Member -MemberType NoteProperty -Name InstallSuccess -Value $false -Force
+          }
         }
 
         $MyUpdates += $updates
@@ -579,6 +734,16 @@ function Get-LocalUpdateStatus {
         Write-Host "Updates with download URLs: $updatesWithUrls" -ForegroundColor White
         Write-Host "Updates requiring manual download: $updatesWithoutUrls" -ForegroundColor Yellow
         Write-Host "Successful downloads: $successfulDownloads" -ForegroundColor Green
+        
+        if ($InstallUpdates) {
+          $successfulInstallations = ($MyUpdates | Where-Object { $_.InstallSuccess -eq $true }).Count
+          $failedInstallations = ($MyUpdates | Where-Object { $_.InstallSuccess -eq $false -and $_.DownloadSuccess -eq $true }).Count
+          Write-Host "Successful installations: $successfulInstallations" -ForegroundColor Green
+          if ($failedInstallations -gt 0) {
+            Write-Host "Failed installations: $failedInstallations" -ForegroundColor Red
+          }
+        }
+        
         Write-Host "Download location: $DownloadPath" -ForegroundColor White
         
         if ($updatesWithoutUrls -gt 0) {
@@ -714,8 +879,16 @@ function Get-LocalUpdateStatus {
       $kbId = $update.KBArticleIDs | Select-Object -First 1
       Write-Host "`nProcessing update: KB$kbId - $($update.Title)" -ForegroundColor White
       
-      $downloadSuccess = Invoke-UpdateDownload -Url $downloadUrl -DestinationPath $DownloadPath -KbId $kbId -Title $update.Title
-      $updates | Add-Member -MemberType NoteProperty -Name DownloadSuccess -Value $downloadSuccess -Force
+      $downloadResult = Invoke-UpdateDownload -Url $downloadUrl -DestinationPath $DownloadPath -KbId $kbId -Title $update.Title -InstallAfterDownload $InstallUpdates
+      
+      if ($InstallUpdates -and ($downloadResult -is [hashtable])) {
+        $updates | Add-Member -MemberType NoteProperty -Name DownloadSuccess -Value $downloadResult.DownloadSuccess -Force
+        $updates | Add-Member -MemberType NoteProperty -Name InstallSuccess -Value $downloadResult.InstallSuccess -Force
+        $updates | Add-Member -MemberType NoteProperty -Name InstalledFilePath -Value $downloadResult.FilePath -Force
+      }
+      else {
+        $updates | Add-Member -MemberType NoteProperty -Name DownloadSuccess -Value $downloadResult -Force
+      }
     }
     elseif ($DownloadUpdates -and -not $downloadUrl) {
       $kbId = $update.KBArticleIDs | Select-Object -First 1
@@ -727,6 +900,9 @@ function Get-LocalUpdateStatus {
       Write-Host "  Alternative: Use Windows Update, WSUS, or Microsoft Update Catalog" -ForegroundColor Gray
       $updates | Add-Member -MemberType NoteProperty -Name DownloadSuccess -Value $false -Force
       $updates | Add-Member -MemberType NoteProperty -Name DownloadNote -Value "No direct URL - manual download required" -Force
+      if ($InstallUpdates) {
+        $updates | Add-Member -MemberType NoteProperty -Name InstallSuccess -Value $false -Force
+      }
     }
 
     $MyUpdates += $updates
@@ -739,13 +915,24 @@ function Get-LocalUpdateStatus {
     $updatesWithoutUrls = $totalUpdates - $updatesWithUrls
     $successfulDownloads = ($MyUpdates | Where-Object { $_.DownloadSuccess -eq $true }).Count
     
+    $summaryTitle = if ($InstallUpdates) { "DOWNLOAD & INSTALLATION SUMMARY" } else { "DOWNLOAD SUMMARY" }
     Write-Host "`n" + "="*50 -ForegroundColor Cyan
-    Write-Host "DOWNLOAD SUMMARY" -ForegroundColor Cyan
+    Write-Host $summaryTitle -ForegroundColor Cyan
     Write-Host "="*50 -ForegroundColor Cyan
     Write-Host "Total updates found: $totalUpdates" -ForegroundColor White
     Write-Host "Updates with download URLs: $updatesWithUrls" -ForegroundColor White
     Write-Host "Updates requiring manual download: $updatesWithoutUrls" -ForegroundColor Yellow
     Write-Host "Successful downloads: $successfulDownloads" -ForegroundColor Green
+    
+    if ($InstallUpdates) {
+      $successfulInstallations = ($MyUpdates | Where-Object { $_.InstallSuccess -eq $true }).Count
+      $failedInstallations = ($MyUpdates | Where-Object { $_.InstallSuccess -eq $false -and $_.DownloadSuccess -eq $true }).Count
+      Write-Host "Successful installations: $successfulInstallations" -ForegroundColor Green
+      if ($failedInstallations -gt 0) {
+        Write-Host "Failed installations: $failedInstallations" -ForegroundColor Red
+      }
+    }
+    
     Write-Host "Download location: $DownloadPath" -ForegroundColor White
     
     if ($updatesWithoutUrls -gt 0) {

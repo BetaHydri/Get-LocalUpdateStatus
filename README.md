@@ -46,11 +46,18 @@ This script provides detailed information about Windows Updates including:
   - `'IsHidden=1'` - Hidden updates
 
 ### DownloadUpdates (Optional)
-- **Type:** Switch
+- **Type:** Switch  
 - **Description:** Enable download mode to automatically download update files when DownloadURL is available
 - **Default:** Disabled
 
-### DownloadPath (Optional)
+### InstallUpdates (Optional)
+- **Type:** Switch
+- **Description:** Automatically install downloaded updates using DISM (.cab) or WUSA (.msu)
+- **Requirements:** Must be used with `-DownloadUpdates` parameter
+- **Supported Formats:** .cab files (via DISM), .msu files (via WUSA)
+- **Installation Flags:** Uses /Quiet /NoRestart (DISM) and /quiet /norestart (WUSA)
+- **Admin Required:** Requires Administrator privileges for installation
+- **Default:** Disabled### DownloadPath (Optional)
 - **Type:** String
 - **Description:** Directory path where downloaded update files will be saved
 - **Default:** `$env:TEMP\WindowsUpdates`
@@ -114,7 +121,7 @@ Get-LocalUpdateStatus -ComputerName localhost -UpdateSearchFilter 'IsInstalled=0
 Get-LocalUpdateStatus -ComputerName localhost -UpdateSearchFilter 'IsHidden=1'
 ```
 
-### Download Missing Updates (NEW!)
+### Download Missing Updates
 ```powershell
 # Download missing updates to default location (%TEMP%\WindowsUpdates)
 Get-LocalUpdateStatus -ComputerName localhost -UpdateSearchFilter 'IsInstalled=0' -DownloadUpdates
@@ -125,6 +132,22 @@ Get-LocalUpdateStatus -ComputerName localhost -UpdateSearchFilter 'IsInstalled=0
 # Download only critical and important updates
 Get-LocalUpdateStatus -ComputerName localhost -UpdateSearchFilter 'IsInstalled=0' -DownloadUpdates | 
     Where-Object { $_.SeverityText -in @('Critical', 'Important') }
+```
+
+### Download and Install Updates (NEW!)
+```powershell
+# Download and automatically install missing updates
+Get-LocalUpdateStatus -ComputerName localhost -UpdateSearchFilter 'IsInstalled=0' -DownloadUpdates -InstallUpdates
+
+# Download and install to custom location
+Get-LocalUpdateStatus -ComputerName localhost -UpdateSearchFilter 'IsInstalled=0' -DownloadUpdates -InstallUpdates -DownloadPath "C:\Updates"
+
+# Download and install only critical updates
+Get-LocalUpdateStatus -ComputerName localhost -UpdateSearchFilter 'IsInstalled=0' -DownloadUpdates -InstallUpdates | 
+    Where-Object { $_.SeverityText -eq 'Critical' }
+
+# WSUS offline scan with download and installation
+Get-LocalUpdateStatus -ComputerName localhost -WSUSOfflineScan -WSUSScanFile "C:\wsusscn2.cab" -UpdateSearchFilter 'IsInstalled=0' -DownloadUpdates -InstallUpdates
 ```
 
 ### Export/Import for Air-gapped Environments (NEW!)
@@ -557,6 +580,52 @@ InformationURL        : https://support.microsoft.com/help/5070884
 SupportURL            : https://support.microsoft.com/help/5070884
 ```
 
+## Sample Installation Output
+
+```
+Processing update: KB5001234 - 2025-10 Cumulative Update for Windows 10
+  Downloading: windows10.0-kb5001234-x64_abc123.msu
+  From: http://download.windowsupdate.com/c/msdownload/update/software/secu/2025/10/windows10.0-kb5001234-x64_abc123_def456.msu
+  Downloaded successfully: windows10.0-kb5001234-x64_abc123.msu (45.67 MB)
+  Installing: windows10.0-kb5001234-x64_abc123.msu
+  Using WUSA for .msu installation...
+  Installation successful: windows10.0-kb5001234-x64_abc123.msu
+
+Processing update: KB5002345 - Security Update for Windows 10
+  Downloading: windows10.0-kb5002345-x64_def789.cab
+  From: http://download.windowsupdate.com/d/msdownload/update/software/secu/2025/10/windows10.0-kb5002345-x64_def789.cab
+  Downloaded successfully: windows10.0-kb5002345-x64_def789.cab (12.34 MB)
+  Installing: windows10.0-kb5002345-x64_def789.cab
+  Using DISM for .cab installation...
+  Installation successful: windows10.0-kb5002345-x64_def789.cab
+
+==================================================
+DOWNLOAD & INSTALLATION SUMMARY
+==================================================
+Total updates found: 15
+Updates with download URLs: 8
+Updates requiring manual download: 7
+Successful downloads: 6
+Successful installations: 6
+Download location: C:\Temp\WindowsUpdates
+==================================================
+```
+
+## Sample Object Properties with Installation Information
+
+```powershell
+Computer              : MYSERVER
+KbId                  : 5001234
+Title                 : 2025-10 Cumulative Update for Windows 10
+IsInstalled           : False
+DownloadURL           : http://download.windowsupdate.com/c/msdownload/update/...
+DownloadSuccess       : True
+InstallSuccess        : True
+InstalledFilePath     : C:\Temp\WindowsUpdates\windows10.0-kb5001234-x64_abc123.msu
+ManualDownloadInfo    : 
+MicrosoftCatalogURL   : 
+```
+
 ## Sample Download Output
 
 ```
@@ -587,22 +656,24 @@ The script automatically detects and displays the Windows Update source:
 
 ## Version Information
 
-- **Version:** 1.3.3
+- **Version:** 1.4.0
 - **Author:** Jan Tiedemann
 - **Copyright:** 2021-2025
 - **GUID:** 4b937790-b06b-427f-8c1f-565030ae0227
 - **Last Updated:** October 2025
 
-### Recent Updates (v1.3.3)
+### Recent Updates (v1.4.0)
+- **NEW: Automatic update installation with `-InstallUpdates` parameter**
+- **Support for .cab files** via DISM.exe (/Online /Add-Package /Quiet /NoRestart)
+- **Support for .msu files** via wusa.exe (/quiet /norestart)
+- **Enhanced result objects** with InstallSuccess and InstalledFilePath properties
+- **Improved summaries** showing installation statistics
+- **Automatic file type detection** and appropriate installer selection
+- **Comprehensive error handling** for installation failures
 - **NEW: Manual download guidance for updates without direct URLs**
 - Added `ManualDownloadInfo` and `MicrosoftCatalogURL` properties to update objects
 - Enhanced download summaries to show updates requiring manual download
-- Automatic Microsoft Update Catalog URLs for KB articles
-- Improved user messaging when cumulative updates lack direct download URLs
 - **FIXED: WSUS offline scan now working correctly with wsusscn2.cab**
-- Corrected AddScanPackageService implementation (2 parameters instead of 3)
-- Added proper HRESULT error handling for COM object issues
-- Enhanced debugging output for troubleshooting
 
 ## Quick Reference
 
@@ -646,6 +717,16 @@ Get-LocalUpdateStatus -ImportReport "C:\Temp\UpdateReport.xml" -DownloadUpdates 
 - **Downloaded files are standard .msu or .cab files that can be installed manually**
 - **Always verify downloaded files before installation**
 
+### Installation Features
+- **InstallUpdates requires DownloadUpdates to be enabled**
+- **Automatic file type detection** (.cab uses DISM, .msu uses WUSA)
+- **Silent installation** with /Quiet /NoRestart and /quiet /norestart flags
+- **No automatic restart** - manual restart required if needed
+- **Installation status tracking** in InstallSuccess property
+- **Supports error handling** with proper exit code interpretation
+- **Administrator privileges required** for installation operations
+- **Compatible with all scan modes** (online, offline, import)
+
 ### Export/Import Features
 - **Export files use PowerShell XML serialization format (.xml)**
 - **Export files contain complete update metadata including download URLs**
@@ -673,6 +754,16 @@ Get-LocalUpdateStatus -ImportReport "C:\Temp\UpdateReport.xml" -DownloadUpdates 
 - **Enhanced download summaries** showing which updates require manual download
 - **Perfect for cumulative updates** that often lack direct download URLs
 - **Clear instructions** for using Microsoft Update Catalog or Windows Update
+
+### Automatic Installation Support
+- **Automatic installation** of downloaded updates with `-InstallUpdates` parameter
+- **DISM integration** for .cab file installation with silent operation
+- **WUSA integration** for .msu file installation with silent operation  
+- **No restart requirement** - installations use /NoRestart and /norestart flags
+- **Comprehensive error handling** with proper exit code interpretation
+- **Installation status tracking** in result objects (InstallSuccess property)
+- **File path tracking** for installed updates (InstalledFilePath property)
+- **Supports both online and offline scan modes** with installation capability
 
 ## Troubleshooting
 
