@@ -14,11 +14,12 @@ PSScriptInfo
 .TAGS Updates, WindowsUpdates, Download, Export, Import, WSUS, Offline, BatchInstall
 
 .DESCRIPTION 
-Enumerates missing or installed Windows Updates and returns an array of objects with update details. 
+Enumerates missing or installed Windows Updates on the local computer and returns an array of objects with update details. 
 Features enhanced batch download-first-then-install workflow with comprehensive progress visualization.
 Supports exporting scan results and importing them on other machines for download.
 Supports WSUS offline scanning using wsusscn2.cab for air-gapped environments.
 Includes interactive installation confirmation and detailed batch processing summaries.
+This function operates on the local computer only - run directly on each machine to be scanned.
 #>
 
 # Helper function to install updates (.cab via DISM, .msu via WUSA, .exe via silent execution)
@@ -469,25 +470,21 @@ if (-not ([System.Management.Automation.PSTypeName]'MsrcSeverity').Type) {
 
 function Get-LocalUpdateStatus {
   #requires -Version 4
-  [CmdletBinding(DefaultParameterSetName = 'ComputerName')]
+  [CmdletBinding(DefaultParameterSetName = 'LocalScan')]
   param (
-    [Parameter(Position = 0, Mandatory = $true, ParameterSetName = 'ComputerName')]
+    [Parameter(Position = 0, Mandatory = $true, ParameterSetName = 'LocalScan')]
     [Parameter(Position = 0, Mandatory = $true, ParameterSetName = 'WSUSOfflineScan')]
-    [System.String]$ComputerName,
-
-    [Parameter(Position = 1, Mandatory = $true, ParameterSetName = 'ComputerName')]
-    [Parameter(Position = 4, Mandatory = $true, ParameterSetName = 'WSUSOfflineScan')]
     [ValidateNotNullOrEmpty()]
     [ValidateSet('IsHidden=0 and IsInstalled=0', 'IsHidden=0 and IsInstalled=1', 'IsInstalled=1', 'IsInstalled=0', 'IsHidden=0', 'IsHidden=1')]
     [System.String]$UpdateSearchFilter,
 
-    [Parameter(Position = 2, Mandatory = $false)]
+    [Parameter(Position = 1, Mandatory = $false)]
     [Switch]$DownloadUpdates,
 
-    [Parameter(Position = 3, Mandatory = $false)]
+    [Parameter(Position = 2, Mandatory = $false)]
     [Switch]$InstallUpdates,
 
-    [Parameter(Position = 4, Mandatory = $false)]
+    [Parameter(Position = 3, Mandatory = $false)]
     [ValidateScript({
         if ($_ -and -not (Test-Path $_ -PathType Container)) {
           throw "Download path '$_' does not exist or is not a directory."
@@ -496,7 +493,7 @@ function Get-LocalUpdateStatus {
       })]
     [System.String]$DownloadPath = "$env:TEMP\WindowsUpdates",
 
-    [Parameter(Position = 5, Mandatory = $false)]
+    [Parameter(Position = 4, Mandatory = $false)]
     [System.String]$ExportReport,
 
     [Parameter(Mandatory = $true, ParameterSetName = 'ImportReport')]
@@ -511,7 +508,7 @@ function Get-LocalUpdateStatus {
     [Parameter(Mandatory = $true, ParameterSetName = 'WSUSOfflineScan')]
     [Switch]$WSUSOfflineScan,
 
-    [Parameter(Position = 1, Mandatory = $false, ParameterSetName = 'WSUSOfflineScan')]
+    [Parameter(Position = 2, Mandatory = $false, ParameterSetName = 'WSUSOfflineScan')]
     [ValidateScript({
         if ($_ -and -not (Test-Path $_ -PathType Leaf)) {
           throw "WSUS scan file '$_' does not exist."
@@ -520,10 +517,10 @@ function Get-LocalUpdateStatus {
       })]
     [System.String]$WSUSScanFile,
 
-    [Parameter(Position = 2, Mandatory = $false, ParameterSetName = 'WSUSOfflineScan')]
+    [Parameter(Position = 3, Mandatory = $false, ParameterSetName = 'WSUSOfflineScan')]
     [Switch]$DownloadWSUSScanFile,
 
-    [Parameter(Position = 3, Mandatory = $false, ParameterSetName = 'WSUSOfflineScan')]
+    [Parameter(Position = 4, Mandatory = $false, ParameterSetName = 'WSUSOfflineScan')]
     [System.String]$WSUSScanFileDownloadPath = "$env:TEMP"
   )
 
