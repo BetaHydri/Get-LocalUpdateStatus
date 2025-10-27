@@ -610,7 +610,7 @@ function Get-LocalUpdateStatus {
           Write-Host ("=" * 60) -ForegroundColor Green
           Write-Host "Updates to download: $($updatesToDownload.Count)" -ForegroundColor White
           Write-Host "Download directory: $DownloadPath" -ForegroundColor White
-          Write-Host "="*60 -ForegroundColor Green
+          Write-Host ("=" * 60) -ForegroundColor Green
           
           # Process downloads with progress visualization
           for ($i = 0; $i -lt $updatesToDownload.Count; $i++) {
@@ -640,7 +640,7 @@ function Get-LocalUpdateStatus {
           Write-Host "Failed downloads: $failedDownloads" -ForegroundColor Red
           Write-Host "Total downloaded: $totalDownloadSizeMB MB" -ForegroundColor Green
           Write-Host "Download directory: $DownloadPath" -ForegroundColor White
-          Write-Host "="*60 -ForegroundColor Green
+          Write-Host ("=" * 60) -ForegroundColor Green
         }
         else {
           Write-Host "`nNo updates available for download (all updates either have no URL or already downloaded)" -ForegroundColor Yellow
