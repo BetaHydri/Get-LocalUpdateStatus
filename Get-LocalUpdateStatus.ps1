@@ -510,18 +510,26 @@ function Get-LocalUpdateStatus {
 
     [Parameter(Position = 2, Mandatory = $false, ParameterSetName = 'WSUSOfflineScan')]
     [ValidateScript({
-        if ($_ -and -not (Test-Path $_ -PathType Leaf)) {
-          throw "WSUS scan file '$_' does not exist."
+        if ($_) {
+          # If it's an existing .cab file, use it directly
+          if (Test-Path $_ -PathType Leaf -Filter "*.cab") {
+            return $true
+          }
+          # If it's a directory, we'll download wsusscn2.cab there
+          elseif (Test-Path $_ -PathType Container) {
+            return $true
+          }
+          # If it doesn't exist but parent directory exists, we can create it
+          elseif (Test-Path (Split-Path $_ -Parent)) {
+            return $true
+          }
+          else {
+            throw "Path '$_' is not a valid file or directory, and parent directory doesn't exist."
+          }
         }
         return $true
       })]
-    [System.String]$WSUSScanFile,
-
-    [Parameter(Position = 3, Mandatory = $false, ParameterSetName = 'WSUSOfflineScan')]
-    [Switch]$DownloadWSUSScanFile,
-
-    [Parameter(Position = 4, Mandatory = $false, ParameterSetName = 'WSUSOfflineScan')]
-    [System.String]$WSUSScanFileDownloadPath = "$env:TEMP"
+    [System.String]$WSUSScanFile = "$env:TEMP"
   )
 
   # Check for admin privileges
@@ -749,21 +757,29 @@ function Get-LocalUpdateStatus {
   if ($PSCmdlet.ParameterSetName -eq 'WSUSOfflineScan') {
     Write-Host "`nWSUS Offline Scan Mode: Scanning with wsusscn2.cab..." -ForegroundColor Cyan
     
-    $scanFile = $WSUSScanFile
+    $scanFile = $null
     
-    # Download wsusscn2.cab if requested or no file provided
-    if ($DownloadWSUSScanFile -or -not $WSUSScanFile) {
-      if (-not (Test-Path $WSUSScanFileDownloadPath)) {
+    # Determine if WSUSScanFile is an existing .cab file or a directory
+    if ($WSUSScanFile -and (Test-Path $WSUSScanFile -PathType Leaf) -and $WSUSScanFile.EndsWith('.cab')) {
+      # Use existing .cab file
+      $scanFile = $WSUSScanFile
+      Write-Host "Using existing WSUS scan file: $scanFile" -ForegroundColor Green
+    }
+    else {
+      # Download wsusscn2.cab to the specified directory (or temp)
+      $downloadPath = if (Test-Path $WSUSScanFile -PathType Container) { $WSUSScanFile } else { $WSUSScanFile }
+      
+      if (-not (Test-Path $downloadPath)) {
         try {
-          New-Item -Path $WSUSScanFileDownloadPath -ItemType Directory -Force | Out-Null
+          New-Item -Path $downloadPath -ItemType Directory -Force | Out-Null
         }
         catch {
-          Write-Error "Failed to create download directory: $WSUSScanFileDownloadPath. Error: $($_.Exception.Message)"
+          Write-Error "Failed to create download directory: $downloadPath. Error: $($_.Exception.Message)"
           return
         }
       }
       
-      $scanFile = Get-WSUSScanFile -DownloadPath $WSUSScanFileDownloadPath
+      $scanFile = Get-WSUSScanFile -DownloadPath $downloadPath
       if (-not $scanFile) {
         Write-Error "Failed to obtain WSUS scan file. Cannot proceed with offline scan."
         return
