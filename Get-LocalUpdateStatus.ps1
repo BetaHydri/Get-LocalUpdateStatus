@@ -841,7 +841,8 @@ function Get-LocalUpdateStatus {
           # For missing updates (IsInstalled=0), zero results usually means system is up to date
           if ($UpdateSearchFilter -match "IsInstalled=0") {
             Write-Host "No missing updates found - system appears to be up to date!" -ForegroundColor Green
-          } else {
+          }
+          else {
             # For other filters, do a quick validation
             Write-Host "No updates found with current filter. Validating scan file..." -ForegroundColor Yellow
             $testResults = $searcher.Search("1=1")  # Search for all updates
@@ -876,7 +877,8 @@ function Get-LocalUpdateStatus {
               Write-Host "Compound filters may not be fully supported in WSUS offline mode." -ForegroundColor Yellow
               Write-Host "Try using simplified filter 'IsInstalled=0' instead of '$UpdateSearchFilter'" -ForegroundColor Cyan
               Write-Host "Note: If no missing updates are found, your system is up to date!" -ForegroundColor Green
-            } else {
+            }
+            else {
               Write-Error "Invalid search filter: $UpdateSearchFilter"
             }
             return
@@ -994,7 +996,7 @@ function Get-LocalUpdateStatus {
           Write-Host ("=" * 60) -ForegroundColor Green
           Write-Host "Updates to download: $($updatesToDownload.Count)" -ForegroundColor White
           Write-Host "Download directory: $DownloadPath" -ForegroundColor White
-          Write-Host ("="*60) -ForegroundColor Green
+          Write-Host ("=" * 60) -ForegroundColor Green
           
           # Process downloads with progress visualization
           for ($i = 0; $i -lt $updatesToDownload.Count; $i++) {
@@ -1024,7 +1026,7 @@ function Get-LocalUpdateStatus {
           Write-Host "Failed downloads: $failedDownloads" -ForegroundColor Red
           Write-Host "Total downloaded: $totalDownloadSizeMB MB" -ForegroundColor Green
           Write-Host "Download directory: $DownloadPath" -ForegroundColor White
-          Write-Host ("="*60)-ForegroundColor Green
+          Write-Host ("=" * 60)-ForegroundColor Green
         }
         else {
           Write-Host "`nNo updates available for download (all updates either have no URL or already downloaded)" -ForegroundColor Yellow
@@ -1298,7 +1300,7 @@ function Get-LocalUpdateStatus {
       Write-Host ("=" * 60) -ForegroundColor Green
       Write-Host "Updates to download: $($updatesToDownload.Count)" -ForegroundColor White
       Write-Host "Download directory: $DownloadPath" -ForegroundColor White
-      Write-Host ("="*60) -ForegroundColor Green
+      Write-Host ("=" * 60) -ForegroundColor Green
       
       # Process downloads with progress visualization
       for ($i = 0; $i -lt $updatesToDownload.Count; $i++) {
@@ -1328,7 +1330,7 @@ function Get-LocalUpdateStatus {
       Write-Host "Failed downloads: $failedDownloads" -ForegroundColor Red
       Write-Host "Total downloaded: $totalDownloadSizeMB MB" -ForegroundColor Green
       Write-Host "Download directory: $DownloadPath" -ForegroundColor White
-      Write-Host ("="*60) -ForegroundColor Green
+      Write-Host ("=" * 60) -ForegroundColor Green
     }
     else {
       Write-Host "`nNo updates available for download (all updates either have no URL or already downloaded)" -ForegroundColor Yellow
