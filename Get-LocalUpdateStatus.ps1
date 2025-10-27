@@ -339,7 +339,7 @@ function Get-LocalUpdateStatus {
     
     try {
       # Create update session and searcher for offline scan
-      $session = [microsoft.visualbasic.interaction]::CreateObject("Microsoft.Update.Session", $ComputerName)
+      $session = New-Object -ComObject Microsoft.Update.Session
       $searcher = $session.CreateUpdateSearcher()
       
       # Set up offline scanning using the .cab file
@@ -347,7 +347,7 @@ function Get-LocalUpdateStatus {
       $searcher.SearchScope = 1  # MachineOnly
       
       # For offline scanning, we need to set the server selection to use the local .cab file
-      $updateServiceManager = [microsoft.visualbasic.interaction]::CreateObject("Microsoft.Update.ServiceManager")
+      $updateServiceManager = New-Object -ComObject Microsoft.Update.ServiceManager
       $updateService = $updateServiceManager.AddScanPackageService("Offline Sync Service", $scanFile, 1)
       $searcher.ServerSelection = 3  # ssOthers
       $searcher.ServiceID = $updateService.ServiceID
@@ -355,6 +355,8 @@ function Get-LocalUpdateStatus {
       # Perform offline scan with specified filter criteria
       Write-Host "Performing offline scan with filter: $UpdateSearchFilter..." -ForegroundColor Yellow
       $results = $searcher.Search($UpdateSearchFilter)
+      
+      Write-Host "Found $($results.Updates.Count) updates via offline scan" -ForegroundColor Green
       
       # Clean up the temporary service
       $updateServiceManager.RemoveService($updateService.ServiceID)
@@ -521,7 +523,7 @@ function Get-LocalUpdateStatus {
     Write-Host "`nDownload mode enabled. Files will be saved to: $DownloadPath" -ForegroundColor Yellow
   }
 
-  $session = [microsoft.visualbasic.interaction]::CreateObject("Microsoft.Update.Session", $ComputerName)
+  $session = New-Object -ComObject Microsoft.Update.Session
   $searcher = $session.CreateUpdateSearcher()
   $results = $searcher.Search($UpdateSearchFilter)
 
