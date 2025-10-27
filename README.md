@@ -2,6 +2,8 @@
 
 A PowerShell function that enumerates Windows Updates (both installed and missing) on the local computer and returns detailed update information as PowerShell objects. **Now features an enhanced batch download-first-then-install workflow with comprehensive progress visualization, support for air-gapped environments through export/import functionality, and WSUS offline scanning using wsusscn2.cab!**
 
+> **⚠️ BREAKING CHANGE in v1.6.0**: The `ComputerName` parameter has been removed. This function now operates on the local computer only. For multi-machine management, use the export/import workflow or PowerShell remoting.
+
 ## Description
 
 This script provides detailed information about Windows Updates on the local computer including:
@@ -882,15 +884,21 @@ Download location: C:\Temp\WindowsUpdates
 
 The script automatically detects and displays the Windows Update source:
 - **WSUS (Windows Server Update Services)** - If configured via Group Policy
-- **Microsoft Update** - Default source for most systems
-
 ## Version Information
 
-- **Version:** 1.5.0
+- **Version:** 1.6.0
 - **Author:** Jan Tiedemann
 - **Copyright:** 2021-2025
 - **GUID:** 4b937790-b06b-427f-8c1f-565030ae0227
 - **Last Updated:** October 2025
+
+### Recent Updates (v1.6.0)
+- **BREAKING CHANGE: Removed ComputerName parameter** - function now operates on local computer only
+- **Simplified parameter structure** with clearer local-only operation
+- **Enhanced .exe installation support** with intelligent silent switch detection  
+- **Improved zero results handling** with positive messaging for up-to-date systems
+- **Better compound filter error handling** in WSUS offline mode
+- **Fixed import mode file detection** for existing update files 2025
 
 ### Recent Updates (v1.5.0)
 - **NEW: Enhanced batch download-first-then-install workflow with comprehensive progress visualization**
@@ -1117,11 +1125,17 @@ If automatic .exe installation fails, you can install manually:
 
 **Problem:** Cannot connect to remote computers
 
-**Solutions:**
-- Ensure WinRM is enabled: `Enable-PSRemoting -Force`
-- Verify firewall settings allow WinRM traffic
-- Confirm administrative access to target computers
-- Test connectivity: `Test-WSMan -ComputerName TargetServer`
+**Note:** This function no longer supports remote computer access. It operates on the local computer only.
+
+**Solutions for Multi-Machine Management:**
+- **Use Export/Import workflow**: Run the script locally on each machine to export scan results, then import and download on a centralized machine
+- **PowerShell Remoting**: Use `Invoke-Command` to run the function remotely:
+  ```powershell
+  Invoke-Command -ComputerName Server01 -ScriptBlock {
+      Get-LocalUpdateStatus -UpdateSearchFilter 'IsInstalled=0' -ExportReport "C:\Temp\Updates.xml"
+  }
+  ```
+- **Direct execution**: Copy the script to each target machine and run locally
 
 ### Debug Testing
 
@@ -1138,4 +1152,5 @@ This test script provides detailed debug output to help identify the specific is
 - **WSUS offline scan requires the exact Microsoft wsusscn2.cab file format**
 - **Large wsusscn2.cab files (>100MB) may take several minutes to process**
 - **Some corporate environments may block COM object access for security**
-- **Remote WSUS offline scanning is not supported (file must be local)**
+- **Local execution only** - script must be run directly on each computer to be scanned
+- **No remote scanning capability** - use export/import workflow for multi-machine management
