@@ -400,6 +400,13 @@ function Get-LocalUpdateStatus {
             $exportPath += '.xml'
           }
           
+          # Create directory if it doesn't exist
+          $exportDir = Split-Path $exportPath -Parent
+          if ($exportDir -and -not (Test-Path $exportDir)) {
+            New-Item -Path $exportDir -ItemType Directory -Force | Out-Null
+            Write-Host "Created export directory: $exportDir" -ForegroundColor Green
+          }
+          
           Export-Clixml -InputObject $MyUpdates -Path $exportPath -Force
           Write-Host "`nWSUS Offline scan report exported successfully to: $exportPath" -ForegroundColor Green
         }
@@ -557,6 +564,13 @@ function Get-LocalUpdateStatus {
       $exportPath = $ExportReport
       if (-not $exportPath.EndsWith('.xml')) {
         $exportPath += '.xml'
+      }
+      
+      # Create directory if it doesn't exist
+      $exportDir = Split-Path $exportPath -Parent
+      if ($exportDir -and -not (Test-Path $exportDir)) {
+        New-Item -Path $exportDir -ItemType Directory -Force | Out-Null
+        Write-Host "Created export directory: $exportDir" -ForegroundColor Green
       }
       
       Export-Clixml -InputObject $MyUpdates -Path $exportPath -Force
