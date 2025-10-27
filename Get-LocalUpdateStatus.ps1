@@ -87,9 +87,17 @@ function Invoke-UpdateInstallation {
         elseif ($process.ExitCode -eq 2) {
           # DISM exit code 2: Invalid command line or access denied
           Write-Host "  DISM failed (exit code 2: Invalid command or access denied), trying alternative method..." -ForegroundColor Yellow
+          Write-Host "  DEBUG: Title='$Title', FileName='$fileName'" -ForegroundColor Magenta
           
-          # Special handling for Azure Connected Machine Agent
-          if ($Title -like "*AzureConnectedMachineAgent*" -or $fileName -like "*azureconnectedmachineagent*") {
+          # Special handling for Azure Connected Machine Agent (improved detection)
+          $isAzureAgent = ($Title -like "*AzureConnectedMachineAgent*") -or 
+                         ($Title -like "*Azure Connected Machine Agent*") -or
+                         ($fileName -like "*azureconnectedmachineagent*") -or
+                         ($fileName -like "*azure*connected*machine*agent*")
+          
+          Write-Host "  DEBUG: Azure agent detection result: $isAzureAgent" -ForegroundColor Magenta
+          
+          if ($isAzureAgent) {
             Write-Host "  Azure Connected Machine Agent detected - using specialized extraction..." -ForegroundColor Cyan
             
             # Try using makecab/extract with different parameters for Azure agent
