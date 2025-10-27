@@ -14,10 +14,11 @@ Get-LocalUpdateStatus provides a complete solution for Windows Update management
 
 ✅ **Local-only operation** - runs directly on the computer to be scanned  
 ✅ **Batch download-first-then-install workflow** with interactive confirmation  
-✅ **Multiple file format support**: .cab (DISM), .msu (WUSA), .exe (silent execution)  
+✅ **Enhanced file format support**: .cab (DISM + extraction fallback), .msu (WUSA), .msi (msiexec), .exe (silent execution)  
+✅ **Intelligent .cab handling** with automatic extraction and multi-format installation (.msu/.msi content)  
 ✅ **WSUS offline scanning** using Microsoft's wsusscn2.cab for air-gapped environments  
 ✅ **Export/Import functionality** for transferring scan data between machines  
-✅ **Intelligent .exe handling** with automatic silent switch detection  
+✅ **Robust error handling** with fallback methods for complex update packages  
 ✅ **Comprehensive progress visualization** and detailed batch processing summaries  
 
 ## Requirements
@@ -337,7 +338,13 @@ Recommendation: Restart the computer to complete installation
 ## Supported File Types
 
 - **.cab files**: Installed via DISM with `/Online /Add-Package /Quiet /NoRestart`
+  - **Enhanced fallback**: If DISM fails (exit code 2), automatically extracts .cab content
+  - **Smart extraction**: Supports .msu and .msi files found within .cab packages
+  - **Azure Connected Machine Agent**: Special handling for complex agent updates
 - **.msu files**: Installed via WUSA with `/quiet /norestart`
+- **.msi files**: Installed via msiexec with `/i /quiet /norestart REBOOT=ReallySuppress`
+  - **Comprehensive error handling**: Detects already installed (1638), platform issues (1633)
+  - **Extracted content**: Automatically handles .msi files found in .cab packages
 - **.exe files**: Installed with intelligent silent switches:
   - **Malicious Software Removal Tool**: Uses `/Q`
   - **Windows Defender/Antimalware**: Uses `/q`
@@ -368,6 +375,19 @@ Get-LocalUpdateStatus -ImportReport "Updates.xml" -DownloadUpdates
 ```
 
 ## Troubleshooting
+
+### Installation Failures (.cab files)
+If DISM installation fails with exit code 2:
+- **Automatic fallback**: Script extracts .cab content and tries alternative methods
+- **Supports**: .msu files (via WUSA) and .msi files (via msiexec) found in .cab packages
+- **Azure Connected Machine Agent**: Special handling with service management
+
+### MSI Installation Issues
+Common MSI error codes and solutions:
+- **1638**: Product already installed (treated as success)
+- **1619**: Package could not be opened (check file integrity)
+- **1633**: Platform not supported (architecture mismatch)
+- **1605**: Product not currently installed (dependency issue)
 
 ### No Updates Found
 When scanning returns zero results for missing updates:
