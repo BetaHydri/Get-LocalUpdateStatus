@@ -119,14 +119,17 @@ function Get-WSUSScanFile {
 [void][Reflection.Assembly]::LoadFrom("C:\Windows\Microsoft.NET\Framework\v4.0.30319\Microsoft.VisualBasic.dll")
 
 # Enum for Severity (defined once for the entire script)
-Add-Type -TypeDefinition '
-public enum MsrcSeverity {
-  Unspecified,
-  Low,
-  Moderate,
-  Important,
-  Critical
-}' -ErrorAction SilentlyContinue
+# Check if the type already exists before defining it
+if (-not ([System.Management.Automation.PSTypeName]'MsrcSeverity').Type) {
+    Add-Type -TypeDefinition '
+    public enum MsrcSeverity {
+      Unspecified,
+      Low,
+      Moderate,
+      Important,
+      Critical
+    }'
+}
 
 function Get-LocalUpdateStatus {
   #requires -Version 4
