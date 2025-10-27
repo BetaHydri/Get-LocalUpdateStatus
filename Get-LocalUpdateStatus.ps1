@@ -1,7 +1,7 @@
 <#
 PSScriptInfo
 
-.VERSION 1.1.0
+.VERSION 1.2.0
 
 .GUID 4b937790-b06b-427f-8c1f-565030ae0227
 
@@ -11,12 +11,69 @@ PSScriptInfo
 
 .COPYRIGHT 2021
 
-.TAGS Updates, WindowsUpdates, Download
+.TAGS Updates, WindowsUpdates, Download, Export, Import
 
 .DESCRIPTION 
 Enumerates missing or installed Windows Updates and returns an array of objects with update details. 
 Optionally downloads update files when DownloadURL is available.
+Supports exporting scan results and importing them on other machines for download.
 #>
+
+# Helper function to download updates
+function Invoke-UpdateDownload {
+  param(
+    [string]$Url,
+    [string]$DestinationPath,
+    [string]$KbId,
+    [string]$Title
+  )
+  
+  if ([string]::IsNullOrWhiteSpace($Url)) {
+    return $false
+  }
+
+  try {
+    # Extract filename from URL or create one based on KB ID
+    $fileName = Split-Path $Url -Leaf
+    if ([string]::IsNullOrWhiteSpace($fileName) -or $fileName -notmatch '\.\w+$') {
+      $fileName = "KB$KbId.msu"
+    }
+    
+    $fullPath = Join-Path $DestinationPath $fileName
+    
+    # Check if file already exists
+    if (Test-Path $fullPath) {
+      Write-Host "  File already exists: $fileName" -ForegroundColor Yellow
+      return $true
+    }
+
+    Write-Host "  Downloading: $fileName" -ForegroundColor Cyan
+    Write-Host "  From: $Url" -ForegroundColor Gray
+    
+    # Use Invoke-WebRequest for download with progress
+    $progressPreference = $global:ProgressPreference
+    $global:ProgressPreference = 'Continue'
+    
+    Invoke-WebRequest -Uri $Url -OutFile $fullPath -UseBasicParsing
+    
+    $global:ProgressPreference = $progressPreference
+    
+    if (Test-Path $fullPath) {
+      $fileSize = (Get-Item $fullPath).Length
+      $fileSizeMB = [math]::Round($fileSize / 1MB, 2)
+      Write-Host "  Downloaded successfully: $fileName ($fileSizeMB MB)" -ForegroundColor Green
+      return $true
+    }
+    else {
+      Write-Host "  Download failed: File not found after download" -ForegroundColor Red
+      return $false
+    }
+  }
+  catch {
+    Write-Host "  Download failed: $($_.Exception.Message)" -ForegroundColor Red
+    return $false
+  }
+}
 
 function Get-LocalUpdateStatus {
   #requires -Version 4
@@ -25,7 +82,7 @@ function Get-LocalUpdateStatus {
     [Parameter(Position = 0, Mandatory = $true, ParameterSetName = 'ComputerName')]
     [System.String]$ComputerName,
 
-    [Parameter(Position = 1, Mandatory = $true)]
+    [Parameter(Position = 1, Mandatory = $true, ParameterSetName = 'ComputerName')]
     [ValidateNotNullOrEmpty()]
     [ValidateSet('IsHidden=0 and IsInstalled=0', 'IsHidden=0 and IsInstalled=1', 'IsInstalled=1', 'IsInstalled=0', 'IsHidden=0', 'IsHidden=1')]
     [System.String]$UpdateSearchFilter,
@@ -40,7 +97,19 @@ function Get-LocalUpdateStatus {
         }
         return $true
       })]
-    [System.String]$DownloadPath = "$env:TEMP\WindowsUpdates"
+    [System.String]$DownloadPath = "$env:TEMP\WindowsUpdates",
+
+    [Parameter(Position = 4, Mandatory = $false)]
+    [System.String]$ExportReport,
+
+    [Parameter(Mandatory = $true, ParameterSetName = 'ImportReport')]
+    [ValidateScript({
+        if (-not (Test-Path $_ -PathType Leaf)) {
+          throw "Import file '$_' does not exist."
+        }
+        return $true
+      })]
+    [System.String]$ImportReport
   )
 
   # Check for admin privileges
@@ -48,6 +117,78 @@ function Get-LocalUpdateStatus {
     Write-Host "This script needs to be run As Admin" -ForegroundColor Red
     Write-Host "Furthermore, the user should be Admin on each computer/server from where you want to gather the Windows Update status!" -ForegroundColor Yellow
     break
+  }
+
+  # Handle import report mode
+  if ($PSCmdlet.ParameterSetName -eq 'ImportReport') {
+    Write-Host "`nImport Report Mode: Loading update data from file..." -ForegroundColor Cyan
+    Write-Host "Import file: $ImportReport" -ForegroundColor White
+    
+    try {
+      $importedData = Import-Clixml -Path $ImportReport
+      
+      if (-not $importedData -or $importedData.Count -eq 0) {
+        Write-Error "No update data found in import file or file is invalid."
+        return
+      }
+      
+      Write-Host "Successfully loaded $($importedData.Count) updates from report" -ForegroundColor Green
+      
+      # If download is requested, process downloads for imported data
+      if ($DownloadUpdates) {
+        Write-Host "`nDownload mode enabled for imported updates..." -ForegroundColor Yellow
+        
+        # Create download directory
+        if (-not (Test-Path $DownloadPath)) {
+          try {
+            New-Item -Path $DownloadPath -ItemType Directory -Force | Out-Null
+            Write-Host "Created download directory: $DownloadPath" -ForegroundColor Green
+          }
+          catch {
+            Write-Error "Failed to create download directory: $DownloadPath. Error: $($_.Exception.Message)"
+            return
+          }
+        }
+        
+        # Process downloads for each imported update
+        $MyUpdates = @()
+        foreach ($update in $importedData) {
+          if ($update.DownloadURL) {
+            Write-Host "`nProcessing imported update: KB$($update.KbId) - $($update.Title)" -ForegroundColor White
+            $downloadSuccess = Invoke-UpdateDownload -Url $update.DownloadURL -DestinationPath $DownloadPath -KbId $update.KbId -Title $update.Title
+            $update | Add-Member -MemberType NoteProperty -Name DownloadSuccess -Value $downloadSuccess -Force
+          }
+          else {
+            $update | Add-Member -MemberType NoteProperty -Name DownloadSuccess -Value $false -Force
+          }
+          $MyUpdates += $update
+        }
+        
+        # Display download summary
+        $totalUpdates = $MyUpdates.Count
+        $updatesWithUrls = ($MyUpdates | Where-Object { $_.DownloadURL }).Count
+        $successfulDownloads = ($MyUpdates | Where-Object { $_.DownloadSuccess -eq $true }).Count
+        
+        Write-Host "`n" + "="*50 -ForegroundColor Cyan
+        Write-Host "IMPORT & DOWNLOAD SUMMARY" -ForegroundColor Cyan
+        Write-Host "="*50 -ForegroundColor Cyan
+        Write-Host "Total updates imported: $totalUpdates" -ForegroundColor White
+        Write-Host "Updates with download URLs: $updatesWithUrls" -ForegroundColor White
+        Write-Host "Successful downloads: $successfulDownloads" -ForegroundColor Green
+        Write-Host "Download location: $DownloadPath" -ForegroundColor White
+        Write-Host "="*50 -ForegroundColor Cyan
+        
+        return $MyUpdates
+      }
+      else {
+        # Just return the imported data without downloading
+        return $importedData
+      }
+    }
+    catch {
+      Write-Error "Failed to import report file: $($_.Exception.Message)"
+      return
+    }
   }
 
   # Display Windows Update source
@@ -99,62 +240,6 @@ function Get-LocalUpdateStatus {
     Important,
     Critical
   }' -ErrorAction SilentlyContinue
-
-  # Helper function to download updates
-  function Invoke-UpdateDownload {
-    param(
-      [string]$Url,
-      [string]$DestinationPath,
-      [string]$KbId,
-      [string]$Title
-    )
-    
-    if ([string]::IsNullOrWhiteSpace($Url)) {
-      return $false
-    }
-
-    try {
-      # Extract filename from URL or create one based on KB ID
-      $fileName = Split-Path $Url -Leaf
-      if ([string]::IsNullOrWhiteSpace($fileName) -or $fileName -notmatch '\.\w+$') {
-        $fileName = "KB$KbId.msu"
-      }
-      
-      $fullPath = Join-Path $DestinationPath $fileName
-      
-      # Check if file already exists
-      if (Test-Path $fullPath) {
-        Write-Host "  File already exists: $fileName" -ForegroundColor Yellow
-        return $true
-      }
-
-      Write-Host "  Downloading: $fileName" -ForegroundColor Cyan
-      Write-Host "  From: $Url" -ForegroundColor Gray
-      
-      # Use Invoke-WebRequest for download with progress
-      $progressPreference = $global:ProgressPreference
-      $global:ProgressPreference = 'Continue'
-      
-      Invoke-WebRequest -Uri $Url -OutFile $fullPath -UseBasicParsing
-      
-      $global:ProgressPreference = $progressPreference
-      
-      if (Test-Path $fullPath) {
-        $fileSize = (Get-Item $fullPath).Length
-        $fileSizeMB = [math]::Round($fileSize / 1MB, 2)
-        Write-Host "  Downloaded successfully: $fileName ($fileSizeMB MB)" -ForegroundColor Green
-        return $true
-      }
-      else {
-        Write-Host "  Download failed: File not found after download" -ForegroundColor Red
-        return $false
-      }
-    }
-    catch {
-      Write-Host "  Download failed: $($_.Exception.Message)" -ForegroundColor Red
-      return $false
-    }
-  }
 
   $MyUpdates = @()
 
@@ -227,6 +312,23 @@ function Get-LocalUpdateStatus {
     Write-Host "Successful downloads: $successfulDownloads" -ForegroundColor Green
     Write-Host "Download location: $DownloadPath" -ForegroundColor White
     Write-Host "="*50 -ForegroundColor Cyan
+  }
+
+  # Export report if requested
+  if ($ExportReport) {
+    try {
+      $exportPath = $ExportReport
+      if (-not $exportPath.EndsWith('.xml')) {
+        $exportPath += '.xml'
+      }
+      
+      Export-Clixml -InputObject $MyUpdates -Path $exportPath -Force
+      Write-Host "`nReport exported successfully to: $exportPath" -ForegroundColor Green
+      Write-Host "Use this file with -ImportReport parameter on another machine to download updates" -ForegroundColor Yellow
+    }
+    catch {
+      Write-Error "Failed to export report: $($_.Exception.Message)"
+    }
   }
 
   $MyUpdates
