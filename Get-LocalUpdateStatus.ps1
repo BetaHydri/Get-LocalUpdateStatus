@@ -838,18 +838,23 @@ function Get-LocalUpdateStatus {
         $results = $searcher.Search($UpdateSearchFilter)
         Write-Host "Found $($results.Updates.Count) updates via offline scan" -ForegroundColor Green
         
-        # If we found 0 updates, let's try a broader search to verify the scan is working
+        # If we found 0 updates, this could be normal (system is up to date) or indicate an issue
         if ($results.Updates.Count -eq 0) {
-          Write-Host "No updates found with current filter. Testing with broader search..." -ForegroundColor Yellow
-          $testResults = $searcher.Search("1=1")  # Search for all updates
-          Write-Host "Total updates in scan file: $($testResults.Updates.Count)" -ForegroundColor Cyan
-          
-          if ($testResults.Updates.Count -eq 0) {
-            Write-Warning "The wsusscn2.cab file appears to be empty or invalid. Try downloading a fresh copy."
-          }
-          else {
-            Write-Host "The scan file contains updates, but none match your filter criteria." -ForegroundColor Yellow
-            Write-Host "Try different filters like 'IsInstalled=0' or 'IsHidden=0'" -ForegroundColor Yellow
+          # Only show additional diagnostic info if this might be an error condition
+          # For missing updates (IsInstalled=0), zero results usually means system is up to date
+          if ($UpdateSearchFilter -match "IsInstalled=0") {
+            Write-Host "No missing updates found - system appears to be up to date!" -ForegroundColor Green
+          } else {
+            # For other filters, do a quick validation
+            Write-Host "No updates found with current filter. Validating scan file..." -ForegroundColor Yellow
+            $testResults = $searcher.Search("1=1")  # Search for all updates
+            
+            if ($testResults.Updates.Count -eq 0) {
+              Write-Warning "The wsusscn2.cab file appears to be empty or invalid. Try downloading a fresh copy."
+            }
+            else {
+              Write-Host "The scan file contains $($testResults.Updates.Count) total updates, but none match your filter criteria." -ForegroundColor Cyan
+            }
           }
         }
       }
@@ -1439,6 +1444,11 @@ function Get-LocalUpdateStatus {
     catch {
       Write-Error "Failed to export report: $($_.Exception.Message)"
     }
+  }
+
+  # Display positive message if no missing updates found
+  if ($MyUpdates.Count -eq 0 -and $UpdateSearchFilter -match "IsInstalled=0" -and -not $DownloadUpdates) {
+    Write-Host "`nNo missing updates found - system is up to date!" -ForegroundColor Green
   }
 
   $MyUpdates
