@@ -97,6 +97,8 @@ function Invoke-UpdateInstallation {
             $expandProcess = Start-Process -FilePath 'expand.exe' -ArgumentList @("-F:*", $FilePath, $tempDir) -Wait -PassThru -NoNewWindow
             
             if ($expandProcess.ExitCode -eq 0) {
+              $installationSuccess = $false
+              
               # Look for .msu files in extracted content
               $msuFiles = Get-ChildItem -Path $tempDir -Filter "*.msu" -Recurse
               if ($msuFiles) {
@@ -104,11 +106,58 @@ function Invoke-UpdateInstallation {
                   Write-Host "  Found extracted .msu file, installing with WUSA..." -ForegroundColor Gray
                   $wusaProcess = Start-Process -FilePath 'wusa.exe' -ArgumentList @($msuFile.FullName, '/quiet', '/norestart') -Wait -PassThru -NoNewWindow
                   if ($wusaProcess.ExitCode -eq 0 -or $wusaProcess.ExitCode -eq 3010) {
-                    Remove-Item -Path $tempDir -Recurse -Force -ErrorAction SilentlyContinue
+                    $installationSuccess = $true
                     Write-Host "  Installation successful via extracted .msu: $fileName" -ForegroundColor Green
-                    return $true
+                    break
                   }
                 }
+              }
+              
+              # Look for .msi files in extracted content if .msu installation failed
+              if (-not $installationSuccess) {
+                $msiFiles = Get-ChildItem -Path $tempDir -Filter "*.msi" -Recurse
+                if ($msiFiles) {
+                  foreach ($msiFile in $msiFiles) {
+                    Write-Host "  Found extracted .msi file, installing with msiexec..." -ForegroundColor Gray
+                    $msiArgs = @(
+                      '/i'
+                      $msiFile.FullName
+                      '/quiet'
+                      '/norestart'
+                      'REBOOT=ReallySuppress'
+                    )
+                    
+                    $msiProcess = Start-Process -FilePath 'msiexec.exe' -ArgumentList $msiArgs -Wait -PassThru -NoNewWindow
+                    if ($msiProcess.ExitCode -eq 0) {
+                      $installationSuccess = $true
+                      Write-Host "  Installation successful via extracted .msi: $fileName" -ForegroundColor Green
+                      break
+                    }
+                    elseif ($msiProcess.ExitCode -eq 3010) {
+                      $installationSuccess = $true
+                      Write-Host "  Installation successful via extracted .msi (restart required): $fileName" -ForegroundColor Yellow
+                      break
+                    }
+                    elseif ($msiProcess.ExitCode -eq 1638) {
+                      $installationSuccess = $true
+                      Write-Host "  Installation skipped: Product already installed - $fileName" -ForegroundColor Yellow
+                      break
+                    }
+                    else {
+                      Write-Host "  .msi installation failed (Exit code: $($msiProcess.ExitCode)): $($msiFile.Name)" -ForegroundColor Red
+                    }
+                  }
+                }
+              }
+              
+              Remove-Item -Path $tempDir -Recurse -Force -ErrorAction SilentlyContinue
+              
+              if ($installationSuccess) {
+                return $true
+              }
+              else {
+                Write-Host "  No installable content found in extracted .cab file: $fileName" -ForegroundColor Red
+                return $false
               }
             }
             
@@ -213,9 +262,53 @@ function Invoke-UpdateInstallation {
         }
       }
       
+      '.msi' {
+        # Use msiexec for .msi files
+        Write-Host "  Using msiexec for .msi installation..." -ForegroundColor Gray
+        $msiArgs = @(
+          '/i'
+          $FilePath
+          '/quiet'
+          '/norestart'
+          'REBOOT=ReallySuppress'
+        )
+        
+        $process = Start-Process -FilePath 'msiexec.exe' -ArgumentList $msiArgs -Wait -PassThru -NoNewWindow
+        
+        if ($process.ExitCode -eq 0) {
+          Write-Host "  Installation successful: $fileName" -ForegroundColor Green
+          return $true
+        }
+        elseif ($process.ExitCode -eq 3010) {
+          Write-Host "  Installation successful (restart required): $fileName" -ForegroundColor Yellow
+          return $true
+        }
+        elseif ($process.ExitCode -eq 1638) {
+          Write-Host "  Installation skipped: Product already installed - $fileName" -ForegroundColor Yellow
+          return $true
+        }
+        elseif ($process.ExitCode -eq 1605) {
+          Write-Host "  Installation failed: This action is only valid for products that are currently installed - $fileName" -ForegroundColor Red
+          return $false
+        }
+        elseif ($process.ExitCode -eq 1619) {
+          Write-Host "  Installation failed: Package could not be opened - $fileName" -ForegroundColor Red
+          return $false
+        }
+        elseif ($process.ExitCode -eq 1633) {
+          Write-Host "  Installation failed: Platform not supported - $fileName" -ForegroundColor Red
+          return $false
+        }
+        else {
+          Write-Host "  Installation failed: $fileName (Exit code: $($process.ExitCode))" -ForegroundColor Red
+          Write-Host "  Note: MSI error codes can indicate specific installation issues" -ForegroundColor Gray
+          return $false
+        }
+      }
+      
       default {
         Write-Host "  Installation failed: Unsupported file type '$fileExtension' for $fileName" -ForegroundColor Red
-        Write-Host "  Supported types: .cab (DISM), .msu (WUSA), .exe (Silent)" -ForegroundColor Gray
+        Write-Host "  Supported types: .cab (DISM), .msu (WUSA), .msi (msiexec), .exe (Silent)" -ForegroundColor Gray
         return $false
       }
     }
