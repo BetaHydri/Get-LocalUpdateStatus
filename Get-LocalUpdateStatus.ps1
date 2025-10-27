@@ -35,19 +35,19 @@ function Get-LocalUpdateStatus {
 
     [Parameter(Position = 3, Mandatory = $false)]
     [ValidateScript({
-      if ($_ -and -not (Test-Path $_ -PathType Container)) {
-        throw "Download path '$_' does not exist or is not a directory."
-      }
-      return $true
-    })]
+        if ($_ -and -not (Test-Path $_ -PathType Container)) {
+          throw "Download path '$_' does not exist or is not a directory."
+        }
+        return $true
+      })]
     [System.String]$DownloadPath = "$env:TEMP\WindowsUpdates"
   )
 
   # Check for admin privileges
-  If (-NOT ([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole] "Administrator")) {
+  if (-not ([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole] "Administrator")) {
     Write-Host "This script needs to be run As Admin" -ForegroundColor Red
     Write-Host "Furthermore, the user should be Admin on each computer/server from where you want to gather the Windows Update status!" -ForegroundColor Yellow
-    Break
+    break
   }
 
   # Display Windows Update source
@@ -168,33 +168,35 @@ function Get-LocalUpdateStatus {
     $severity = 0
     try {
       $severity = ([int][MsrcSeverity]$update.MsrcSeverity)
-    } catch {}
+    }
+    catch {}
 
     $bulletinId = ($update.SecurityBulletinIDs | Select-Object -First 1)
     $bulletinUrl = if ($bulletinId) {
       'http://www.microsoft.com/technet/security/bulletin/{0}.mspx' -f $bulletinId
-    } else {
+    }
+    else {
       [System.String]::Empty
     }
 
     $updates = New-Object -TypeName psobject |
-      Add-Member -MemberType NoteProperty -Name Computer -Value "$env:computername" -PassThru -Force |
-      Add-Member -MemberType NoteProperty -Name Id -Value ($update.SecurityBulletinIDs | Select-Object -First 1) -PassThru -Force |
-      Add-Member -MemberType NoteProperty -Name CVEIds -Value ($update.cveids | Select-Object -First 1) -PassThru -Force |
-      Add-Member -MemberType NoteProperty -Name BulletinId -Value $bulletinId -PassThru -Force |
-      Add-Member -MemberType NoteProperty -Name KbId -Value ($update.KBArticleIDs | Select-Object -First 1) -PassThru -Force |
-      Add-Member -MemberType NoteProperty -Name Type -Value $update.Type -PassThru -Force |
-      Add-Member -MemberType NoteProperty -Name IsInstalled -Value $update.IsInstalled -PassThru -Force |
-      Add-Member -MemberType NoteProperty -Name InstalledOn -Value $update.LastDeploymentChangeTime -PassThru -Force |
-      Add-Member -MemberType NoteProperty -Name RestartRequired -Value $update.RebootRequired -PassThru -Force |
-      Add-Member -MemberType NoteProperty -Name Title -Value $update.Title -PassThru -Force |
-      Add-Member -MemberType NoteProperty -Name Description -Value $update.Description -PassThru -Force |
-      Add-Member -MemberType NoteProperty -Name SeverityText -Value ([MsrcSeverity][int]$severity) -PassThru -Force |
-      Add-Member -MemberType NoteProperty -Name Severity -Value $severity -PassThru -ErrorAction SilentlyContinue -Force |
-      Add-Member -MemberType NoteProperty -Name InformationURL -Value ($update.MoreInfoUrls | Select-Object -First 1) -PassThru -Force |
-      Add-Member -MemberType NoteProperty -Name SupportURL -Value $update.supporturl -PassThru -Force |
-      Add-Member -MemberType NoteProperty -Name DownloadURL -Value $downloadUrl -PassThru -Force |
-      Add-Member -MemberType NoteProperty -Name BulletinURL -Value $bulletinUrl -PassThru -Force
+    Add-Member -MemberType NoteProperty -Name Computer -Value "$env:computername" -PassThru -Force |
+    Add-Member -MemberType NoteProperty -Name Id -Value ($update.SecurityBulletinIDs | Select-Object -First 1) -PassThru -Force |
+    Add-Member -MemberType NoteProperty -Name CVEIds -Value ($update.cveids | Select-Object -First 1) -PassThru -Force |
+    Add-Member -MemberType NoteProperty -Name BulletinId -Value $bulletinId -PassThru -Force |
+    Add-Member -MemberType NoteProperty -Name KbId -Value ($update.KBArticleIDs | Select-Object -First 1) -PassThru -Force |
+    Add-Member -MemberType NoteProperty -Name Type -Value $update.Type -PassThru -Force |
+    Add-Member -MemberType NoteProperty -Name IsInstalled -Value $update.IsInstalled -PassThru -Force |
+    Add-Member -MemberType NoteProperty -Name InstalledOn -Value $update.LastDeploymentChangeTime -PassThru -Force |
+    Add-Member -MemberType NoteProperty -Name RestartRequired -Value $update.RebootRequired -PassThru -Force |
+    Add-Member -MemberType NoteProperty -Name Title -Value $update.Title -PassThru -Force |
+    Add-Member -MemberType NoteProperty -Name Description -Value $update.Description -PassThru -Force |
+    Add-Member -MemberType NoteProperty -Name SeverityText -Value ([MsrcSeverity][int]$severity) -PassThru -Force |
+    Add-Member -MemberType NoteProperty -Name Severity -Value $severity -PassThru -ErrorAction SilentlyContinue -Force |
+    Add-Member -MemberType NoteProperty -Name InformationURL -Value ($update.MoreInfoUrls | Select-Object -First 1) -PassThru -Force |
+    Add-Member -MemberType NoteProperty -Name SupportURL -Value $update.supporturl -PassThru -Force |
+    Add-Member -MemberType NoteProperty -Name DownloadURL -Value $downloadUrl -PassThru -Force |
+    Add-Member -MemberType NoteProperty -Name BulletinURL -Value $bulletinUrl -PassThru -Force
 
     # Download update if DownloadUpdates switch is enabled and URL is available
     if ($DownloadUpdates -and $downloadUrl) {
