@@ -90,13 +90,28 @@ function Get-WSUSScanFile {
     Write-Host "URL: $WSUSUrl" -ForegroundColor Gray
     Write-Host "Destination: $cabFile" -ForegroundColor Gray
     
-    # Use Invoke-WebRequest for download with progress
-    $progressPreference = $global:ProgressPreference
-    $global:ProgressPreference = 'Continue'
+    # Configure TLS/SSL settings for better compatibility
+    $originalSecurityProtocol = [System.Net.ServicePointManager]::SecurityProtocol
+    $originalServerCertificateValidationCallback = [System.Net.ServicePointManager]::ServerCertificateValidationCallback
     
-    Invoke-WebRequest -Uri $WSUSUrl -OutFile $cabFile -UseBasicParsing
-    
-    $global:ProgressPreference = $progressPreference
+    try {
+      # Enable modern TLS versions
+      [System.Net.ServicePointManager]::SecurityProtocol = [System.Net.SecurityProtocolType]::Tls12 -bor [System.Net.SecurityProtocolType]::Tls13
+      
+      # Use Invoke-WebRequest for download with progress
+      $progressPreference = $global:ProgressPreference
+      $global:ProgressPreference = 'Continue'
+      
+      # Try download with enhanced parameters
+      Invoke-WebRequest -Uri $WSUSUrl -OutFile $cabFile -UseBasicParsing -UserAgent "PowerShell WSUS Scanner" -TimeoutSec 300
+      
+      $global:ProgressPreference = $progressPreference
+    }
+    finally {
+      # Restore original settings
+      [System.Net.ServicePointManager]::SecurityProtocol = $originalSecurityProtocol
+      [System.Net.ServicePointManager]::ServerCertificateValidationCallback = $originalServerCertificateValidationCallback
+    }
     
     if (Test-Path $cabFile) {
       $fileSize = (Get-Item $cabFile).Length
@@ -110,7 +125,28 @@ function Get-WSUSScanFile {
     }
   }
   catch {
-    Write-Error "Failed to download WSUS scan file: $($_.Exception.Message)"
+    Write-Host "Primary download method failed: $($_.Exception.Message)" -ForegroundColor Yellow
+    Write-Host "Attempting alternative download method..." -ForegroundColor Yellow
+    
+    # Try alternative download method using System.Net.WebClient
+    try {
+      $webClient = New-Object System.Net.WebClient
+      $webClient.Headers.Add("User-Agent", "PowerShell WSUS Scanner")
+      $webClient.DownloadFile($WSUSUrl, $cabFile)
+      $webClient.Dispose()
+      
+      if (Test-Path $cabFile) {
+        $fileSize = (Get-Item $cabFile).Length
+        $fileSizeMB = [math]::Round($fileSize / 1MB, 2)
+        Write-Host "Downloaded successfully using alternative method: wsusscn2.cab ($fileSizeMB MB)" -ForegroundColor Green
+        return $cabFile
+      }
+    }
+    catch {
+      Write-Host "Alternative download method also failed: $($_.Exception.Message)" -ForegroundColor Yellow
+    }
+    
+    Write-Error "All download methods failed. Please check your internet connection and try again, or manually download wsusscn2.cab from Microsoft and use the -WSUSScanFile parameter."
     return $null
   }
 }
