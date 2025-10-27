@@ -115,6 +115,19 @@ function Get-WSUSScanFile {
   }
 }
 
+# Load the assembly needed for COM objects (once for the entire script)
+[void][Reflection.Assembly]::LoadFrom("C:\Windows\Microsoft.NET\Framework\v4.0.30319\Microsoft.VisualBasic.dll")
+
+# Enum for Severity (defined once for the entire script)
+Add-Type -TypeDefinition '
+public enum MsrcSeverity {
+  Unspecified,
+  Low,
+  Moderate,
+  Important,
+  Critical
+}' -ErrorAction SilentlyContinue
+
 function Get-LocalUpdateStatus {
   #requires -Version 4
   [CmdletBinding(DefaultParameterSetName = 'ComputerName')]
@@ -253,19 +266,6 @@ function Get-LocalUpdateStatus {
   # Handle WSUS offline scan mode
   if ($PSCmdlet.ParameterSetName -eq 'WSUSOfflineScan') {
     Write-Host "`nWSUS Offline Scan Mode: Scanning with wsusscn2.cab..." -ForegroundColor Cyan
-    
-    # Load the assembly needed for COM objects
-    [void][Reflection.Assembly]::LoadFrom("C:\Windows\Microsoft.NET\Framework\v4.0.30319\Microsoft.VisualBasic.dll")
-    
-    # Enum for Severity
-    Add-Type -TypeDefinition '
-    public enum MsrcSeverity {
-      Unspecified,
-      Low,
-      Moderate,
-      Important,
-      Critical
-    }' -ErrorAction SilentlyContinue
     
     $scanFile = $WSUSScanFile
     
@@ -462,20 +462,9 @@ function Get-LocalUpdateStatus {
     Write-Host "`nDownload mode enabled. Files will be saved to: $DownloadPath" -ForegroundColor Yellow
   }
 
-  [void][Reflection.Assembly]::LoadFrom("C:\Windows\Microsoft.NET\Framework\v4.0.30319\Microsoft.VisualBasic.dll")
   $session = [microsoft.visualbasic.interaction]::CreateObject("Microsoft.Update.Session", $ComputerName)
   $searcher = $session.CreateUpdateSearcher()
   $results = $searcher.Search($UpdateSearchFilter)
-
-  # Enum for Severity
-  Add-Type -TypeDefinition '
-  public enum MsrcSeverity {
-    Unspecified,
-    Low,
-    Moderate,
-    Important,
-    Critical
-  }' -ErrorAction SilentlyContinue
 
   $MyUpdates = @()
 
