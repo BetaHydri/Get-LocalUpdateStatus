@@ -253,9 +253,9 @@ function Invoke-UpdateBatchInstallation {
   $failedInstalls = 0
   $installResults = @()
 
-  Write-Host "`n" + "="*60 -ForegroundColor Magenta
+  Write-Host ("`n" + "="*60) -ForegroundColor Magenta
   Write-Host "STARTING BATCH INSTALLATION" -ForegroundColor Magenta
-  Write-Host "="*60 -ForegroundColor Magenta
+  Write-Host ("="*60) -ForegroundColor Magenta
   Write-Host "Mode: $InstallationMode" -ForegroundColor White
   Write-Host "Total updates to install: $totalUpdates" -ForegroundColor White
   Write-Host "="*60 -ForegroundColor Magenta
@@ -307,9 +307,9 @@ function Invoke-UpdateBatchInstallation {
   Write-Progress -Activity "Installing Windows Updates" -Completed
   
   # Final installation summary
-  Write-Host "`n" + "="*60 -ForegroundColor Magenta
+  Write-Host ("`n" + "="*60) -ForegroundColor Magenta
   Write-Host "BATCH INSTALLATION COMPLETED" -ForegroundColor Magenta
-  Write-Host "="*60 -ForegroundColor Magenta
+  Write-Host ("="*60) -ForegroundColor Magenta
   Write-Host "Total updates processed: $totalUpdates" -ForegroundColor White
   Write-Host "Successful installations: $successfulInstalls" -ForegroundColor Green
   Write-Host "Failed installations: $failedInstalls" -ForegroundColor Red
@@ -326,7 +326,7 @@ function Invoke-UpdateBatchInstallation {
     Write-Host "`nRecommendation: Restart the computer to complete the installation of $successfulInstalls update(s)" -ForegroundColor Yellow
   }
   
-  Write-Host "="*60 -ForegroundColor Magenta
+  Write-Host ("`n" + "="*60) -ForegroundColor Magenta
   
   return $installResults
 }
@@ -547,9 +547,9 @@ function Get-LocalUpdateStatus {
         $updatesToDownload = $MyUpdates | Where-Object { $_.NeedsDownload -eq $true }
         
         if ($updatesToDownload -and $updatesToDownload.Count -gt 0) {
-          Write-Host "`n" + "="*60 -ForegroundColor Green
+          Write-Host ("`n" + "="*60) -ForegroundColor Green
           Write-Host "STARTING BATCH DOWNLOAD PHASE (IMPORT MODE)" -ForegroundColor Green
-          Write-Host "="*60 -ForegroundColor Green
+          Write-Host ("="*60) -ForegroundColor Green
           Write-Host "Updates to download: $($updatesToDownload.Count)" -ForegroundColor White
           Write-Host "Download directory: $DownloadPath" -ForegroundColor White
           Write-Host "="*60 -ForegroundColor Green
@@ -575,9 +575,9 @@ function Get-LocalUpdateStatus {
           $totalDownloadSize = ($MyUpdates | Where-Object { $_.DownloadSuccess -eq $true } | Measure-Object -Property DownloadedFileSize -Sum).Sum
           $totalDownloadSizeMB = [math]::Round($totalDownloadSize / 1MB, 2)
           
-          Write-Host "`n" + "="*60 -ForegroundColor Green
+          Write-Host ("`n" + "="*60) -ForegroundColor Green
           Write-Host "DOWNLOAD PHASE COMPLETED (IMPORT MODE)" -ForegroundColor Green
-          Write-Host "="*60 -ForegroundColor Green
+          Write-Host ("="*60) -ForegroundColor Green
           Write-Host "Successful downloads: $successfulDownloads" -ForegroundColor Green
           Write-Host "Failed downloads: $failedDownloads" -ForegroundColor Red
           Write-Host "Total downloaded: $totalDownloadSizeMB MB" -ForegroundColor Green
@@ -632,9 +632,9 @@ function Get-LocalUpdateStatus {
         # Handle updates without direct download URLs (IMPORT MODE)
         $updatesWithoutUrls = $MyUpdates | Where-Object { $_.NeedsDownload -eq $false -and $null -eq $_.DownloadURL }
         if ($updatesWithoutUrls -and $updatesWithoutUrls.Count -gt 0) {
-          Write-Host "`n" + "="*60 -ForegroundColor Yellow
+          Write-Host ("`n" + "="*60) -ForegroundColor Yellow
           Write-Host "MANUAL DOWNLOAD REQUIRED (IMPORT MODE)" -ForegroundColor Yellow
-          Write-Host "="*60 -ForegroundColor Yellow
+          Write-Host ("="*60) -ForegroundColor Yellow
           Write-Host "The following $($updatesWithoutUrls.Count) update(s) require manual download:" -ForegroundColor Yellow
           
           foreach ($update in $updatesWithoutUrls) {
@@ -646,7 +646,7 @@ function Get-LocalUpdateStatus {
           }
           
           Write-Host "`nTip: Visit Microsoft Update Catalog (catalog.update.microsoft.com) for manual downloads" -ForegroundColor Green
-          Write-Host "="*60 -ForegroundColor Yellow
+          Write-Host ("="*60) -ForegroundColor Yellow
         }
         
         # Display final summary for import mode
@@ -655,9 +655,9 @@ function Get-LocalUpdateStatus {
         $successfulDownloads = ($MyUpdates | Where-Object { $_.DownloadSuccess -eq $true }).Count
         
         $summaryTitle = if ($InstallUpdates) { "FINAL IMPORT, DOWNLOAD & INSTALLATION SUMMARY" } else { "FINAL IMPORT & DOWNLOAD SUMMARY" }
-        Write-Host "`n" + "="*60 -ForegroundColor Cyan
+        Write-Host ("`n" + "="*60) -ForegroundColor Cyan
         Write-Host $summaryTitle -ForegroundColor Cyan
-        Write-Host "="*60 -ForegroundColor Cyan
+        Write-Host ("="*60) -ForegroundColor Cyan
         Write-Host "Total updates imported: $totalUpdates" -ForegroundColor White
         Write-Host "Updates with download URLs: $updatesWithUrls" -ForegroundColor White
         Write-Host "Successful downloads: $successfulDownloads" -ForegroundColor Green
@@ -672,7 +672,7 @@ function Get-LocalUpdateStatus {
         }
         
         Write-Host "Download location: $DownloadPath" -ForegroundColor White
-        Write-Host "="*60 -ForegroundColor Cyan
+        Write-Host ("="*60) -ForegroundColor Cyan
         
         return $MyUpdates
       }
@@ -920,9 +920,9 @@ function Get-LocalUpdateStatus {
         $updatesToDownload = $MyUpdates | Where-Object { $_.NeedsDownload -eq $true }
         
         if ($updatesToDownload -and $updatesToDownload.Count -gt 0) {
-          Write-Host "`n" + "="*60 -ForegroundColor Green
+          Write-Host ("`n" + "="*60) -ForegroundColor Green
           Write-Host "STARTING BATCH DOWNLOAD PHASE (WSUS OFFLINE)" -ForegroundColor Green
-          Write-Host "="*60 -ForegroundColor Green
+          Write-Host ("="*60) -ForegroundColor Green
           Write-Host "Updates to download: $($updatesToDownload.Count)" -ForegroundColor White
           Write-Host "Download directory: $DownloadPath" -ForegroundColor White
           Write-Host "="*60 -ForegroundColor Green
@@ -948,9 +948,9 @@ function Get-LocalUpdateStatus {
           $totalDownloadSize = ($MyUpdates | Where-Object { $_.DownloadSuccess -eq $true } | Measure-Object -Property DownloadedFileSize -Sum).Sum
           $totalDownloadSizeMB = [math]::Round($totalDownloadSize / 1MB, 2)
           
-          Write-Host "`n" + "="*60 -ForegroundColor Green
+          Write-Host ("`n" + "="*60) -ForegroundColor Green
           Write-Host "DOWNLOAD PHASE COMPLETED (WSUS OFFLINE)" -ForegroundColor Green
-          Write-Host "="*60 -ForegroundColor Green
+          Write-Host ("="*60) -ForegroundColor Green
           Write-Host "Successful downloads: $successfulDownloads" -ForegroundColor Green
           Write-Host "Failed downloads: $failedDownloads" -ForegroundColor Red
           Write-Host "Total downloaded: $totalDownloadSizeMB MB" -ForegroundColor Green
@@ -1006,9 +1006,9 @@ function Get-LocalUpdateStatus {
       # Handle updates without direct download URLs (WSUS Offline)
       $updatesWithoutUrls = $MyUpdates | Where-Object { $_.NeedsDownload -eq $false -and $null -eq $_.DownloadURL }
       if ($DownloadUpdates -and $updatesWithoutUrls -and $updatesWithoutUrls.Count -gt 0) {
-        Write-Host "`n" + "="*60 -ForegroundColor Yellow
+        Write-Host ("`n" + "="*60) -ForegroundColor Yellow
         Write-Host "MANUAL DOWNLOAD REQUIRED (WSUS OFFLINE)" -ForegroundColor Yellow
-        Write-Host "="*60 -ForegroundColor Yellow
+        Write-Host ("="*60) -ForegroundColor Yellow
         Write-Host "The following $($updatesWithoutUrls.Count) update(s) require manual download:" -ForegroundColor Yellow
         
         foreach ($update in $updatesWithoutUrls) {
@@ -1020,7 +1020,7 @@ function Get-LocalUpdateStatus {
         }
         
         Write-Host "`nTip: Visit Microsoft Update Catalog (catalog.update.microsoft.com) for manual downloads" -ForegroundColor Green
-        Write-Host "="*60 -ForegroundColor Yellow
+        Write-Host ("="*60) -ForegroundColor Yellow
       }
       
       # Export report if requested
@@ -1052,9 +1052,9 @@ function Get-LocalUpdateStatus {
       $importantUpdates = ($MyUpdates | Where-Object { $_.SeverityText -eq 'Important' }).Count
       
       $summaryTitle = if ($InstallUpdates) { "FINAL WSUS OFFLINE SCAN, DOWNLOAD & INSTALLATION SUMMARY" } else { "FINAL WSUS OFFLINE SCAN SUMMARY" }
-      Write-Host "`n" + "="*60 -ForegroundColor Cyan
+      Write-Host ("`n" + "="*60) -ForegroundColor Cyan
       Write-Host $summaryTitle -ForegroundColor Cyan
-      Write-Host "="*60 -ForegroundColor Cyan
+      Write-Host ("="*60) -ForegroundColor Cyan
       Write-Host "Scan file used: $(Split-Path $scanFile -Leaf)" -ForegroundColor White
       Write-Host "Search filter: $UpdateSearchFilter" -ForegroundColor White
       Write-Host "Total updates found: $totalUpdates" -ForegroundColor White
@@ -1081,7 +1081,7 @@ function Get-LocalUpdateStatus {
         Write-Host "Download location: $DownloadPath" -ForegroundColor White
       }
       
-      Write-Host "="*60 -ForegroundColor Cyan
+      Write-Host ("="*60) -ForegroundColor Cyan
       
       return $MyUpdates
     }
@@ -1224,9 +1224,9 @@ function Get-LocalUpdateStatus {
     $updatesToDownload = $MyUpdates | Where-Object { $_.NeedsDownload -eq $true }
     
     if ($updatesToDownload -and $updatesToDownload.Count -gt 0) {
-      Write-Host "`n" + "="*60 -ForegroundColor Green
+      Write-Host ("`n" + "="*60) -ForegroundColor Green
       Write-Host "STARTING BATCH DOWNLOAD PHASE" -ForegroundColor Green
-      Write-Host "="*60 -ForegroundColor Green
+      Write-Host ("="*60) -ForegroundColor Green
       Write-Host "Updates to download: $($updatesToDownload.Count)" -ForegroundColor White
       Write-Host "Download directory: $DownloadPath" -ForegroundColor White
       Write-Host "="*60 -ForegroundColor Green
@@ -1252,9 +1252,9 @@ function Get-LocalUpdateStatus {
       $totalDownloadSize = ($MyUpdates | Where-Object { $_.DownloadSuccess -eq $true } | Measure-Object -Property DownloadedFileSize -Sum).Sum
       $totalDownloadSizeMB = [math]::Round($totalDownloadSize / 1MB, 2)
       
-      Write-Host "`n" + "="*60 -ForegroundColor Green
+      Write-Host ("`n" + "="*60) -ForegroundColor Green
       Write-Host "DOWNLOAD PHASE COMPLETED" -ForegroundColor Green
-      Write-Host "="*60 -ForegroundColor Green
+      Write-Host ("="*60) -ForegroundColor Green
       Write-Host "Successful downloads: $successfulDownloads" -ForegroundColor Green
       Write-Host "Failed downloads: $failedDownloads" -ForegroundColor Red
       Write-Host "Total downloaded: $totalDownloadSizeMB MB" -ForegroundColor Green
@@ -1310,9 +1310,9 @@ function Get-LocalUpdateStatus {
   # Handle updates without direct download URLs
   $updatesWithoutUrls = $MyUpdates | Where-Object { $_.NeedsDownload -eq $false -and $null -eq $_.DownloadURL }
   if ($DownloadUpdates -and $updatesWithoutUrls -and $updatesWithoutUrls.Count -gt 0) {
-    Write-Host "`n" + "="*60 -ForegroundColor Yellow
+    Write-Host ("`n" + "="*60) -ForegroundColor Yellow
     Write-Host "MANUAL DOWNLOAD REQUIRED" -ForegroundColor Yellow
-    Write-Host "="*60 -ForegroundColor Yellow
+    Write-Host ("="*60) -ForegroundColor Yellow
     Write-Host "The following $($updatesWithoutUrls.Count) update(s) require manual download:" -ForegroundColor Yellow
     
     foreach ($update in $updatesWithoutUrls) {
@@ -1324,7 +1324,7 @@ function Get-LocalUpdateStatus {
     }
     
     Write-Host "`nTip: Visit Microsoft Update Catalog (catalog.update.microsoft.com) for manual downloads" -ForegroundColor Green
-    Write-Host "="*60 -ForegroundColor Yellow
+    Write-Host ("="*60) -ForegroundColor Yellow
   }
 
   # Display final summary if downloads were requested
@@ -1335,9 +1335,9 @@ function Get-LocalUpdateStatus {
     $successfulDownloads = ($MyUpdates | Where-Object { $_.DownloadSuccess -eq $true }).Count
     
     $summaryTitle = if ($InstallUpdates) { "FINAL DOWNLOAD & INSTALLATION SUMMARY" } else { "FINAL DOWNLOAD SUMMARY" }
-    Write-Host "`n" + "="*60 -ForegroundColor Cyan
+    Write-Host ("`n" + "="*60) -ForegroundColor Cyan
     Write-Host $summaryTitle -ForegroundColor Cyan
-    Write-Host "="*60 -ForegroundColor Cyan
+    Write-Host ("="*60) -ForegroundColor Cyan
     Write-Host "Total updates found: $totalUpdates" -ForegroundColor White
     Write-Host "Updates with download URLs: $updatesWithUrls" -ForegroundColor White
     Write-Host "Updates requiring manual download: $updatesWithoutUrls" -ForegroundColor Yellow
