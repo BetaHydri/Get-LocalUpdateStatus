@@ -1,7 +1,7 @@
 <#
 PSScriptInfo
 
-.VERSION 1.2.0
+.VERSION 1.3.0
 
 .GUID 4b937790-b06b-427f-8c1f-565030ae0227
 
@@ -11,12 +11,13 @@ PSScriptInfo
 
 .COPYRIGHT 2021
 
-.TAGS Updates, WindowsUpdates, Download, Export, Import
+.TAGS Updates, WindowsUpdates, Download, Export, Import, WSUS, Offline
 
 .DESCRIPTION 
 Enumerates missing or installed Windows Updates and returns an array of objects with update details. 
 Optionally downloads update files when DownloadURL is available.
 Supports exporting scan results and importing them on other machines for download.
+Supports WSUS offline scanning using wsusscn2.cab for air-gapped environments.
 #>
 
 # Helper function to download updates
@@ -75,11 +76,51 @@ function Invoke-UpdateDownload {
   }
 }
 
+# Helper function to download WSUS scan file
+function Get-WSUSScanFile {
+  param(
+    [string]$DownloadPath,
+    [string]$WSUSUrl = "https://catalog.s.download.windowsupdate.com/microsoftupdate/v6/wsusscan/wsusscn2.cab"
+  )
+  
+  $cabFile = Join-Path $DownloadPath "wsusscn2.cab"
+  
+  try {
+    Write-Host "Downloading WSUS scan file from Microsoft..." -ForegroundColor Cyan
+    Write-Host "URL: $WSUSUrl" -ForegroundColor Gray
+    Write-Host "Destination: $cabFile" -ForegroundColor Gray
+    
+    # Use Invoke-WebRequest for download with progress
+    $progressPreference = $global:ProgressPreference
+    $global:ProgressPreference = 'Continue'
+    
+    Invoke-WebRequest -Uri $WSUSUrl -OutFile $cabFile -UseBasicParsing
+    
+    $global:ProgressPreference = $progressPreference
+    
+    if (Test-Path $cabFile) {
+      $fileSize = (Get-Item $cabFile).Length
+      $fileSizeMB = [math]::Round($fileSize / 1MB, 2)
+      Write-Host "Downloaded successfully: wsusscn2.cab ($fileSizeMB MB)" -ForegroundColor Green
+      return $cabFile
+    }
+    else {
+      Write-Error "Download failed: File not found after download"
+      return $null
+    }
+  }
+  catch {
+    Write-Error "Failed to download WSUS scan file: $($_.Exception.Message)"
+    return $null
+  }
+}
+
 function Get-LocalUpdateStatus {
   #requires -Version 4
   [CmdletBinding(DefaultParameterSetName = 'ComputerName')]
   param (
     [Parameter(Position = 0, Mandatory = $true, ParameterSetName = 'ComputerName')]
+    [Parameter(Position = 0, Mandatory = $true, ParameterSetName = 'WSUSOfflineScan')]
     [System.String]$ComputerName,
 
     [Parameter(Position = 1, Mandatory = $true, ParameterSetName = 'ComputerName')]
@@ -109,7 +150,25 @@ function Get-LocalUpdateStatus {
         }
         return $true
       })]
-    [System.String]$ImportReport
+    [System.String]$ImportReport,
+
+    [Parameter(Mandatory = $true, ParameterSetName = 'WSUSOfflineScan')]
+    [Switch]$WSUSOfflineScan,
+
+    [Parameter(Position = 1, Mandatory = $false, ParameterSetName = 'WSUSOfflineScan')]
+    [ValidateScript({
+        if ($_ -and -not (Test-Path $_ -PathType Leaf)) {
+          throw "WSUS scan file '$_' does not exist."
+        }
+        return $true
+      })]
+    [System.String]$WSUSScanFile,
+
+    [Parameter(Position = 2, Mandatory = $false, ParameterSetName = 'WSUSOfflineScan')]
+    [Switch]$DownloadWSUSScanFile,
+
+    [Parameter(Position = 3, Mandatory = $false, ParameterSetName = 'WSUSOfflineScan')]
+    [System.String]$WSUSScanFileDownloadPath = "$env:TEMP"
   )
 
   # Check for admin privileges
@@ -187,6 +246,183 @@ function Get-LocalUpdateStatus {
     }
     catch {
       Write-Error "Failed to import report file: $($_.Exception.Message)"
+      return
+    }
+  }
+
+  # Handle WSUS offline scan mode
+  if ($PSCmdlet.ParameterSetName -eq 'WSUSOfflineScan') {
+    Write-Host "`nWSUS Offline Scan Mode: Scanning with wsusscn2.cab..." -ForegroundColor Cyan
+    
+    # Load the assembly needed for COM objects
+    [void][Reflection.Assembly]::LoadFrom("C:\Windows\Microsoft.NET\Framework\v4.0.30319\Microsoft.VisualBasic.dll")
+    
+    # Enum for Severity
+    Add-Type -TypeDefinition '
+    public enum MsrcSeverity {
+      Unspecified,
+      Low,
+      Moderate,
+      Important,
+      Critical
+    }' -ErrorAction SilentlyContinue
+    
+    $scanFile = $WSUSScanFile
+    
+    # Download wsusscn2.cab if requested or no file provided
+    if ($DownloadWSUSScanFile -or -not $WSUSScanFile) {
+      if (-not (Test-Path $WSUSScanFileDownloadPath)) {
+        try {
+          New-Item -Path $WSUSScanFileDownloadPath -ItemType Directory -Force | Out-Null
+        }
+        catch {
+          Write-Error "Failed to create download directory: $WSUSScanFileDownloadPath. Error: $($_.Exception.Message)"
+          return
+        }
+      }
+      
+      $scanFile = Get-WSUSScanFile -DownloadPath $WSUSScanFileDownloadPath
+      if (-not $scanFile) {
+        Write-Error "Failed to obtain WSUS scan file. Cannot proceed with offline scan."
+        return
+      }
+    }
+    
+    if (-not (Test-Path $scanFile)) {
+      Write-Error "WSUS scan file not found: $scanFile"
+      return
+    }
+    
+    Write-Host "Using WSUS scan file: $scanFile" -ForegroundColor White
+    
+    try {
+      # Create update session and searcher for offline scan
+      $session = [microsoft.visualbasic.interaction]::CreateObject("Microsoft.Update.Session", $ComputerName)
+      $searcher = $session.CreateUpdateSearcher()
+      
+      # Set offline mode and scan file path
+      $searcher.Online = $false
+      $searcher.SearchScope = 1  # MachineOnly
+      
+      # Perform offline scan - only search for missing updates in offline mode
+      Write-Host "Performing offline scan for missing updates..." -ForegroundColor Yellow
+      $results = $searcher.Search("IsInstalled=0", $scanFile)
+      
+      Write-Host "Found $($results.Updates.Count) missing updates via offline scan" -ForegroundColor Green
+      
+      # Process results similar to normal scan
+      $MyUpdates = @()
+      
+      foreach ($update in $results.Updates) {
+        $downloadUrl = $update.BundledUpdates | ForEach-Object {
+          $_.DownloadContents | ForEach-Object {
+            $_.DownloadUrl
+          }
+        } | Select-Object -First 1
+
+        $severity = 0
+        try {
+          $severity = ([int][MsrcSeverity]$update.MsrcSeverity)
+        }
+        catch {}
+
+        $bulletinId = ($update.SecurityBulletinIDs | Select-Object -First 1)
+        $bulletinUrl = if ($bulletinId) {
+          'http://www.microsoft.com/technet/security/bulletin/{0}.mspx' -f $bulletinId
+        }
+        else {
+          [System.String]::Empty
+        }
+
+        $updates = New-Object -TypeName psobject |
+        Add-Member -MemberType NoteProperty -Name Computer -Value "$env:computername" -PassThru -Force |
+        Add-Member -MemberType NoteProperty -Name Id -Value ($update.SecurityBulletinIDs | Select-Object -First 1) -PassThru -Force |
+        Add-Member -MemberType NoteProperty -Name CVEIds -Value ($update.cveids | Select-Object -First 1) -PassThru -Force |
+        Add-Member -MemberType NoteProperty -Name BulletinId -Value $bulletinId -PassThru -Force |
+        Add-Member -MemberType NoteProperty -Name KbId -Value ($update.KBArticleIDs | Select-Object -First 1) -PassThru -Force |
+        Add-Member -MemberType NoteProperty -Name Type -Value $update.Type -PassThru -Force |
+        Add-Member -MemberType NoteProperty -Name IsInstalled -Value $update.IsInstalled -PassThru -Force |
+        Add-Member -MemberType NoteProperty -Name InstalledOn -Value $update.LastDeploymentChangeTime -PassThru -Force |
+        Add-Member -MemberType NoteProperty -Name RestartRequired -Value $update.RebootRequired -PassThru -Force |
+        Add-Member -MemberType NoteProperty -Name Title -Value $update.Title -PassThru -Force |
+        Add-Member -MemberType NoteProperty -Name Description -Value $update.Description -PassThru -Force |
+        Add-Member -MemberType NoteProperty -Name SeverityText -Value ([MsrcSeverity][int]$severity) -PassThru -Force |
+        Add-Member -MemberType NoteProperty -Name Severity -Value $severity -PassThru -ErrorAction SilentlyContinue -Force |
+        Add-Member -MemberType NoteProperty -Name InformationURL -Value ($update.MoreInfoUrls | Select-Object -First 1) -PassThru -Force |
+        Add-Member -MemberType NoteProperty -Name SupportURL -Value $update.supporturl -PassThru -Force |
+        Add-Member -MemberType NoteProperty -Name DownloadURL -Value $downloadUrl -PassThru -Force |
+        Add-Member -MemberType NoteProperty -Name BulletinURL -Value $bulletinUrl -PassThru -Force |
+        Add-Member -MemberType NoteProperty -Name ScanMethod -Value "WSUS Offline" -PassThru -Force
+
+        # Download update if DownloadUpdates switch is enabled and URL is available
+        if ($DownloadUpdates -and $downloadUrl) {
+          if (-not (Test-Path $DownloadPath)) {
+            try {
+              New-Item -Path $DownloadPath -ItemType Directory -Force | Out-Null
+              Write-Host "Created download directory: $DownloadPath" -ForegroundColor Green
+            }
+            catch {
+              Write-Error "Failed to create download directory: $DownloadPath. Error: $($_.Exception.Message)"
+              return
+            }
+          }
+          
+          $kbId = $update.KBArticleIDs | Select-Object -First 1
+          Write-Host "`nProcessing update: KB$kbId - $($update.Title)" -ForegroundColor White
+          
+          $downloadSuccess = Invoke-UpdateDownload -Url $downloadUrl -DestinationPath $DownloadPath -KbId $kbId -Title $update.Title
+          $updates | Add-Member -MemberType NoteProperty -Name DownloadSuccess -Value $downloadSuccess -Force
+        }
+        elseif ($DownloadUpdates -and -not $downloadUrl) {
+          $updates | Add-Member -MemberType NoteProperty -Name DownloadSuccess -Value $false -Force
+        }
+
+        $MyUpdates += $updates
+      }
+      
+      # Export report if requested
+      if ($ExportReport) {
+        try {
+          $exportPath = $ExportReport
+          if (-not $exportPath.EndsWith('.xml')) {
+            $exportPath += '.xml'
+          }
+          
+          Export-Clixml -InputObject $MyUpdates -Path $exportPath -Force
+          Write-Host "`nWSUS Offline scan report exported successfully to: $exportPath" -ForegroundColor Green
+        }
+        catch {
+          Write-Error "Failed to export report: $($_.Exception.Message)"
+        }
+      }
+      
+      # Display summary
+      $totalUpdates = $MyUpdates.Count
+      $criticalUpdates = ($MyUpdates | Where-Object { $_.SeverityText -eq 'Critical' }).Count
+      $importantUpdates = ($MyUpdates | Where-Object { $_.SeverityText -eq 'Important' }).Count
+      
+      Write-Host "`n" + "="*50 -ForegroundColor Cyan
+      Write-Host "WSUS OFFLINE SCAN SUMMARY" -ForegroundColor Cyan
+      Write-Host "="*50 -ForegroundColor Cyan
+      Write-Host "Scan file used: $(Split-Path $scanFile -Leaf)" -ForegroundColor White
+      Write-Host "Total missing updates: $totalUpdates" -ForegroundColor White
+      Write-Host "Critical updates: $criticalUpdates" -ForegroundColor Red
+      Write-Host "Important updates: $importantUpdates" -ForegroundColor Yellow
+      
+      if ($DownloadUpdates) {
+        $updatesWithUrls = ($MyUpdates | Where-Object { $_.DownloadURL }).Count
+        $successfulDownloads = ($MyUpdates | Where-Object { $_.DownloadSuccess -eq $true }).Count
+        Write-Host "Updates with download URLs: $updatesWithUrls" -ForegroundColor White
+        Write-Host "Successful downloads: $successfulDownloads" -ForegroundColor Green
+        Write-Host "Download location: $DownloadPath" -ForegroundColor White
+      }
+      
+      Write-Host "="*50 -ForegroundColor Cyan
+      
+      return $MyUpdates
+    }
+    catch {
+      Write-Error "WSUS offline scan failed: $($_.Exception.Message)"
       return
     }
   }
