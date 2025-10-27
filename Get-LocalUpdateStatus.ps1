@@ -258,7 +258,7 @@ function Invoke-UpdateBatchInstallation {
   Write-Host ("=" * 60) -ForegroundColor Magenta
   Write-Host "Mode: $InstallationMode" -ForegroundColor White
   Write-Host "Total updates to install: $totalUpdates" -ForegroundColor White
-  Write-Host "="*60 -ForegroundColor Magenta
+  Write-Host ("=" * 60) -ForegroundColor Magenta
 
   for ($i = 0; $i -lt $totalUpdates; $i++) {
     $update = $UpdatesToInstall[$i]
@@ -1353,7 +1353,7 @@ function Get-LocalUpdateStatus {
     }
     
     Write-Host "Download location: $DownloadPath" -ForegroundColor White
-    Write-Host ("="*60) -ForegroundColor Cyan
+    Write-Host ("=" * 60) -ForegroundColor Cyan
   }
 
   # Export report if requested
