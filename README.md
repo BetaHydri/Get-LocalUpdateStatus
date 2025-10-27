@@ -1,10 +1,10 @@
 # Get-LocalUpdateStatus
 
-A PowerShell function that enumerates Windows Updates (both installed and missing) on local or remote computers and returns detailed update information as PowerShell objects. **Now features an enhanced batch download-first-then-install workflow with comprehensive progress visualization, support for air-gapped environments through export/import functionality, and WSUS offline scanning using wsusscn2.cab!**
+A PowerShell function that enumerates Windows Updates (both installed and missing) on the local computer and returns detailed update information as PowerShell objects. **Now features an enhanced batch download-first-then-install workflow with comprehensive progress visualization, support for air-gapped environments through export/import functionality, and WSUS offline scanning using wsusscn2.cab!**
 
 ## Description
 
-This script provides detailed information about Windows Updates including:
+This script provides detailed information about Windows Updates on the local computer including:
 - Installed updates
 - Missing/available updates  
 - Hidden updates
@@ -20,7 +20,7 @@ This script provides detailed information about Windows Updates including:
 
 - **PowerShell 4.0** or higher
 - **Administrator privileges** required
-- User must have admin rights on target computers for remote queries
+- **Local execution only** - script must be run directly on the computer to be scanned
 - Uses Microsoft Update Session COM objects
 
 ## Installation
@@ -33,12 +33,10 @@ This script provides detailed information about Windows Updates including:
 
 ## Parameters
 
-### ComputerName (Required)
-- **Type:** String
-- **Description:** Target computer name (use 'localhost' for local machine)
-
 ### UpdateSearchFilter (Required)
 - **Type:** ValidateSet String
+- **Position:** 0 (first parameter)
+- **Description:** Search filter for Windows Updates
 - **Valid Values:**
   - `'IsHidden=0 and IsInstalled=1'` - Visible installed updates
   - `'IsHidden=0 and IsInstalled=0'` - Visible missing updates  
@@ -49,11 +47,13 @@ This script provides detailed information about Windows Updates including:
 
 ### DownloadUpdates (Optional)
 - **Type:** Switch  
+- **Position:** 1
 - **Description:** Enable download mode to automatically download update files when DownloadURL is available
 - **Default:** Disabled
 
 ### InstallUpdates (Optional)
 - **Type:** Switch
+- **Position:** 2
 - **Description:** Automatically install downloaded updates using DISM (.cab) or WUSA (.msu) in batch mode
 - **Requirements:** Must be used with `-DownloadUpdates` parameter
 - **Workflow:** Downloads all updates first, then asks for confirmation before batch installation
@@ -62,14 +62,18 @@ This script provides detailed information about Windows Updates including:
 - **Interactive Confirmation:** Prompts user before starting installation phase
 - **Admin Required:** Requires Administrator privileges for installation
 - **Progress Visualization:** Shows detailed progress for each installation
-- **Default:** Disabled### DownloadPath (Optional)
+- **Default:** Disabled
+
+### DownloadPath (Optional)
 - **Type:** String
+- **Position:** 3
 - **Description:** Directory path where downloaded update files will be saved
 - **Default:** `$env:TEMP\WindowsUpdates`
 - **Validation:** Path must exist or be creatable
 
 ### ExportReport (Optional)
 - **Type:** String
+- **Position:** 4
 - **Description:** Export scan results to XML file for later import on another machine
 - **Usage:** Automatically adds `.xml` extension if not provided
 - **Use Case:** Perfect for air-gapped environments
@@ -84,16 +88,11 @@ This script provides detailed information about Windows Updates including:
 - **Type:** Switch
 - **Description:** Enable WSUS offline scan mode using wsusscn2.cab
 - **Use Case:** Perfect for completely air-gapped environments
-- **Parameter Set:** Works with ComputerName and UpdateSearchFilter parameters
-
-### UpdateSearchFilter (Required for WSUS Offline Mode)
-- **Type:** ValidateSet String
-- **Description:** Same filter options as regular scan mode
-- **Valid Values:** All standard filter options supported
-- **Position:** 4 (for WSUS offline scan parameter set)
+- **Parameter Set:** Works with UpdateSearchFilter and other download/install parameters
 
 ### WSUSScanFile (Optional for WSUS Offline Mode)
 - **Type:** String
+- **Position:** 2 (for WSUS offline scan parameter set)
 - **Description:** Path to existing wsusscn2.cab file for offline scanning
 - **Validation:** File must exist if provided
 - **Path Support:** Supports both relative (.\wsusscn2.cab) and absolute paths
@@ -101,11 +100,13 @@ This script provides detailed information about Windows Updates including:
 
 ### DownloadWSUSScanFile (Optional for WSUS Offline Mode)
 - **Type:** Switch
+- **Position:** 3 (for WSUS offline scan parameter set)
 - **Description:** Download latest wsusscn2.cab from Microsoft's official source
 - **URL:** https://catalog.s.download.windowsupdate.com/microsoftupdate/v6/wsusscan/wsusscn2.cab
 
 ### WSUSScanFileDownloadPath (Optional for WSUS Offline Mode)
 - **Type:** String
+- **Position:** 4 (for WSUS offline scan parameter set)
 - **Description:** Directory path where wsusscn2.cab will be downloaded
 - **Default:** `$env:TEMP`
 
@@ -113,42 +114,42 @@ This script provides detailed information about Windows Updates including:
 
 ### Get All Installed Updates
 ```powershell
-Get-LocalUpdateStatus -ComputerName localhost -UpdateSearchFilter 'IsInstalled=1'
+Get-LocalUpdateStatus -UpdateSearchFilter 'IsInstalled=1'
 ```
 
 ### Get Missing Updates
 ```powershell
-Get-LocalUpdateStatus -ComputerName localhost -UpdateSearchFilter 'IsInstalled=0'
+Get-LocalUpdateStatus -UpdateSearchFilter 'IsInstalled=0'
 ```
 
 ### Get Hidden Updates
 ```powershell
-Get-LocalUpdateStatus -ComputerName localhost -UpdateSearchFilter 'IsHidden=1'
+Get-LocalUpdateStatus -UpdateSearchFilter 'IsHidden=1'
 ```
 
 ### Download Missing Updates
 ```powershell
 # Download missing updates to default location (%TEMP%\WindowsUpdates)
-Get-LocalUpdateStatus -ComputerName localhost -UpdateSearchFilter 'IsInstalled=0' -DownloadUpdates
+Get-LocalUpdateStatus -UpdateSearchFilter 'IsInstalled=0' -DownloadUpdates
 
 # Download to custom location
-Get-LocalUpdateStatus -ComputerName localhost -UpdateSearchFilter 'IsInstalled=0' -DownloadUpdates -DownloadPath "C:\Updates"
+Get-LocalUpdateStatus -UpdateSearchFilter 'IsInstalled=0' -DownloadUpdates -DownloadPath "C:\Updates"
 
 # Download only critical and important updates
-Get-LocalUpdateStatus -ComputerName localhost -UpdateSearchFilter 'IsInstalled=0' -DownloadUpdates | 
+Get-LocalUpdateStatus -UpdateSearchFilter 'IsInstalled=0' -DownloadUpdates | 
     Where-Object { $_.SeverityText -in @('Critical', 'Important') }
 ```
 
 ### Download and Install Updates with Enhanced Batch Processing (NEW v1.5.0!)
 ```powershell
 # Download all updates first, then install with user confirmation
-Get-LocalUpdateStatus -ComputerName localhost -UpdateSearchFilter 'IsInstalled=0' -DownloadUpdates -InstallUpdates
+Get-LocalUpdateStatus -UpdateSearchFilter 'IsInstalled=0' -DownloadUpdates -InstallUpdates
 
 # Enhanced workflow with custom download location
-Get-LocalUpdateStatus -ComputerName localhost -UpdateSearchFilter 'IsInstalled=0' -DownloadUpdates -InstallUpdates -DownloadPath "C:\Updates"
+Get-LocalUpdateStatus -UpdateSearchFilter 'IsInstalled=0' -DownloadUpdates -InstallUpdates -DownloadPath "C:\Updates"
 
 # WSUS offline scan with enhanced batch download and installation
-Get-LocalUpdateStatus -ComputerName localhost -WSUSOfflineScan -WSUSScanFile "C:\wsusscn2.cab" -UpdateSearchFilter 'IsInstalled=0' -DownloadUpdates -InstallUpdates
+Get-LocalUpdateStatus -WSUSOfflineScan -WSUSScanFile "C:\wsusscn2.cab" -UpdateSearchFilter 'IsInstalled=0' -DownloadUpdates -InstallUpdates
 
 # Import updates and process with enhanced batch workflow
 Get-LocalUpdateStatus -ImportReport "Server01_Updates.xml" -DownloadUpdates -InstallUpdates -DownloadPath "C:\Updates"
@@ -166,13 +167,13 @@ Get-LocalUpdateStatus -ImportReport "Server01_Updates.xml" -DownloadUpdates -Ins
 #### Step 1: Export Scan Results (Machine without Internet)
 ```powershell
 # Export missing updates scan to XML file
-Get-LocalUpdateStatus -ComputerName localhost -UpdateSearchFilter 'IsInstalled=0' -ExportReport "C:\Reports\Server01_MissingUpdates"
+Get-LocalUpdateStatus -UpdateSearchFilter 'IsInstalled=0' -ExportReport "C:\Reports\Server01_MissingUpdates"
 
 # Export with timestamp in filename
-Get-LocalUpdateStatus -ComputerName localhost -UpdateSearchFilter 'IsInstalled=0' -ExportReport "C:\Reports\$(Get-Date -Format 'yyyyMMdd')_Server01_Updates"
+Get-LocalUpdateStatus -UpdateSearchFilter 'IsInstalled=0' -ExportReport "C:\Reports\$(Get-Date -Format 'yyyyMMdd')_Server01_Updates"
 
 # Export all visible updates for comprehensive report
-Get-LocalUpdateStatus -ComputerName localhost -UpdateSearchFilter 'IsHidden=0' -ExportReport "C:\Reports\Server01_AllUpdates"
+Get-LocalUpdateStatus -UpdateSearchFilter 'IsHidden=0' -ExportReport "C:\Reports\Server01_AllUpdates"
 ```
 
 #### Step 2: Import and Download (Machine with Internet)
@@ -195,40 +196,40 @@ Get-LocalUpdateStatus -ImportReport "C:\Reports\Server01_MissingUpdates.xml" | W
 #### Download and Use Latest wsusscn2.cab
 ```powershell
 # Download latest wsusscn2.cab and perform offline scan for missing updates
-Get-LocalUpdateStatus -ComputerName localhost -WSUSOfflineScan -DownloadWSUSScanFile -UpdateSearchFilter 'IsInstalled=0'
+Get-LocalUpdateStatus -WSUSOfflineScan -DownloadWSUSScanFile -UpdateSearchFilter 'IsInstalled=0'
 
 # Download to custom location and scan for installed updates
-Get-LocalUpdateStatus -ComputerName localhost -WSUSOfflineScan -DownloadWSUSScanFile -WSUSScanFileDownloadPath "C:\WSUS" -UpdateSearchFilter 'IsInstalled=1'
+Get-LocalUpdateStatus -WSUSOfflineScan -DownloadWSUSScanFile -WSUSScanFileDownloadPath "C:\WSUS" -UpdateSearchFilter 'IsInstalled=1'
 
 # Download, scan for hidden updates, and export results
-Get-LocalUpdateStatus -ComputerName localhost -WSUSOfflineScan -DownloadWSUSScanFile -UpdateSearchFilter 'IsHidden=1' -ExportReport "C:\Reports\WSUS_HiddenUpdates"
+Get-LocalUpdateStatus -WSUSOfflineScan -DownloadWSUSScanFile -UpdateSearchFilter 'IsHidden=1' -ExportReport "C:\Reports\WSUS_HiddenUpdates"
 
 # Download, scan for all visible updates, and export
-Get-LocalUpdateStatus -ComputerName localhost -WSUSOfflineScan -DownloadWSUSScanFile -UpdateSearchFilter 'IsHidden=0' -ExportReport "C:\Reports\WSUS_AllVisible"
+Get-LocalUpdateStatus -WSUSOfflineScan -DownloadWSUSScanFile -UpdateSearchFilter 'IsHidden=0' -ExportReport "C:\Reports\WSUS_AllVisible"
 ```
 
 #### Use Existing wsusscn2.cab (Completely Offline)
 ```powershell
 # Use existing wsusscn2.cab file for offline scan - missing updates
-Get-LocalUpdateStatus -ComputerName localhost -WSUSOfflineScan -WSUSScanFile "C:\WSUS\wsusscn2.cab" -UpdateSearchFilter 'IsInstalled=0'
+Get-LocalUpdateStatus -WSUSOfflineScan -WSUSScanFile "C:\WSUS\wsusscn2.cab" -UpdateSearchFilter 'IsInstalled=0'
 
 # Use relative path for scan file - installed updates
-Get-LocalUpdateStatus -ComputerName localhost -WSUSOfflineScan -WSUSScanFile ".\wsusscn2.cab" -UpdateSearchFilter 'IsInstalled=1'
+Get-LocalUpdateStatus -WSUSOfflineScan -WSUSScanFile ".\wsusscn2.cab" -UpdateSearchFilter 'IsInstalled=1'
 
 # Offline scan for visible missing updates with export
-Get-LocalUpdateStatus -ComputerName localhost -WSUSOfflineScan -WSUSScanFile "C:\WSUS\wsusscn2.cab" -UpdateSearchFilter 'IsHidden=0 and IsInstalled=0' -ExportReport "C:\Reports\AirgappedServer_OfflineScan"
+Get-LocalUpdateStatus -WSUSOfflineScan -WSUSScanFile "C:\WSUS\wsusscn2.cab" -UpdateSearchFilter 'IsHidden=0 and IsInstalled=0' -ExportReport "C:\Reports\AirgappedServer_OfflineScan"
 
 # Offline scan for hidden updates
-Get-LocalUpdateStatus -ComputerName localhost -WSUSOfflineScan -WSUSScanFile ".\wsusscn2.cab" -UpdateSearchFilter 'IsHidden=1'
+Get-LocalUpdateStatus -WSUSOfflineScan -WSUSScanFile ".\wsusscn2.cab" -UpdateSearchFilter 'IsHidden=1'
 
 # Offline scan with download (requires internet for download phase)
-Get-LocalUpdateStatus -ComputerName localhost -WSUSOfflineScan -WSUSScanFile "C:\WSUS\wsusscn2.cab" -UpdateSearchFilter 'IsInstalled=0' -DownloadUpdates -DownloadPath "C:\OfflineUpdates"
+Get-LocalUpdateStatus -WSUSOfflineScan -WSUSScanFile "C:\WSUS\wsusscn2.cab" -UpdateSearchFilter 'IsInstalled=0' -DownloadUpdates -DownloadPath "C:\OfflineUpdates"
 ```
 ```
 
 ### Formatted Output Example
 ```powershell
-Get-LocalUpdateStatus -ComputerName localhost -UpdateSearchFilter 'IsInstalled=1' | 
+Get-LocalUpdateStatus -UpdateSearchFilter 'IsInstalled=1' | 
     Select-Object -Property KbId, IsInstalled, InstalledOn, Title, SeverityText | 
     Sort-Object -Property InstalledOn -Descending | 
     Format-Table -AutoSize
@@ -426,11 +427,10 @@ The export/import functionality enables update management for machines without d
 
 ### Enterprise Multi-Machine Example
 ```powershell
-# Script to scan multiple servers and create individual export files
-$servers = @("Server01", "Server02", "Server03")
-foreach ($server in $servers) {
-    Get-LocalUpdateStatus -ComputerName $server -UpdateSearchFilter 'IsInstalled=0' -ExportReport "C:\Reports\$server`_Updates_$(Get-Date -Format 'yyyyMMdd')"
-}
+# Script to scan multiple servers - run this script ON EACH SERVER
+# (Copy and execute on Server01, Server02, Server03, etc.)
+$serverName = $env:COMPUTERNAME
+Get-LocalUpdateStatus -UpdateSearchFilter 'IsInstalled=0' -ExportReport "C:\Reports\$serverName`_Updates_$(Get-Date -Format 'yyyyMMdd')"
 
 # Later, on internet-connected machine, download for all servers
 Get-ChildItem "C:\Reports\*_Updates_*.xml" | ForEach-Object {
@@ -457,13 +457,13 @@ The WSUS offline scan functionality uses Microsoft's official wsusscn2.cab file 
 3. **Perform offline scan:**
    ```powershell
    # Scan for missing updates
-   Get-LocalUpdateStatus -ComputerName localhost -WSUSOfflineScan -WSUSScanFile "C:\PortableWSUS\wsusscn2.cab" -UpdateSearchFilter 'IsInstalled=0' -ExportReport "C:\ScanResults\OfflineMissingScan"
+   Get-LocalUpdateStatus -WSUSOfflineScan -WSUSScanFile "C:\PortableWSUS\wsusscn2.cab" -UpdateSearchFilter 'IsInstalled=0' -ExportReport "C:\ScanResults\OfflineMissingScan"
    
    # Scan for installed updates
-   Get-LocalUpdateStatus -ComputerName localhost -WSUSOfflineScan -WSUSScanFile "C:\PortableWSUS\wsusscn2.cab" -UpdateSearchFilter 'IsInstalled=1' -ExportReport "C:\ScanResults\OfflineInstalledScan"
+   Get-LocalUpdateStatus -WSUSOfflineScan -WSUSScanFile "C:\PortableWSUS\wsusscn2.cab" -UpdateSearchFilter 'IsInstalled=1' -ExportReport "C:\ScanResults\OfflineInstalledScan"
    
    # Scan for hidden updates
-   Get-LocalUpdateStatus -ComputerName localhost -WSUSOfflineScan -WSUSScanFile "C:\PortableWSUS\wsusscn2.cab" -UpdateSearchFilter 'IsHidden=1' -ExportReport "C:\ScanResults\OfflineHiddenScan"
+   Get-LocalUpdateStatus -WSUSOfflineScan -WSUSScanFile "C:\PortableWSUS\wsusscn2.cab" -UpdateSearchFilter 'IsHidden=1' -ExportReport "C:\ScanResults\OfflineHiddenScan"
    ```
 
 4. **Transfer scan results** back to internet-connected machine
@@ -478,40 +478,33 @@ The WSUS offline scan functionality uses Microsoft's official wsusscn2.cab file 
 
 ```powershell
 # Download wsusscn2.cab, scan for missing updates immediately, and export for future use
-Get-LocalUpdateStatus -ComputerName localhost -WSUSOfflineScan -DownloadWSUSScanFile -UpdateSearchFilter 'IsInstalled=0' -ExportReport "C:\Reports\CurrentMissingUpdates"
+Get-LocalUpdateStatus -WSUSOfflineScan -DownloadWSUSScanFile -UpdateSearchFilter 'IsInstalled=0' -ExportReport "C:\Reports\CurrentMissingUpdates"
 
 # Later, use the same wsusscn2.cab for other machines (offline) - scan for different criteria
-Get-LocalUpdateStatus -ComputerName ServerB -WSUSOfflineScan -WSUSScanFile "$env:TEMP\wsusscn2.cab" -UpdateSearchFilter 'IsInstalled=1' -ExportReport "C:\Reports\ServerB_InstalledUpdates"
+Get-LocalUpdateStatus -WSUSOfflineScan -WSUSScanFile "$env:TEMP\wsusscn2.cab" -UpdateSearchFilter 'IsInstalled=1' -ExportReport "C:\Reports\ServerB_InstalledUpdates"
 
 # Scan for hidden updates on another machine
-Get-LocalUpdateStatus -ComputerName ServerC -WSUSOfflineScan -WSUSScanFile "$env:TEMP\wsusscn2.cab" -UpdateSearchFilter 'IsHidden=1' -ExportReport "C:\Reports\ServerC_HiddenUpdates"
+Get-LocalUpdateStatus -WSUSOfflineScan -WSUSScanFile "$env:TEMP\wsusscn2.cab" -UpdateSearchFilter 'IsHidden=1' -ExportReport "C:\Reports\ServerC_HiddenUpdates"
 ```
 
 ### Enterprise Multi-Server WSUS Offline Scanning
 
 ```powershell
-# Prepare wsusscn2.cab once
-Get-LocalUpdateStatus -ComputerName localhost -WSUSOfflineScan -DownloadWSUSScanFile -WSUSScanFileDownloadPath "C:\Enterprise\WSUS"
+# Prepare wsusscn2.cab once (run on internet-connected machine)
+Get-LocalUpdateStatus -WSUSOfflineScan -DownloadWSUSScanFile -WSUSScanFileDownloadPath "C:\Enterprise\WSUS"
 
-# Scan multiple servers for different criteria using the same wsusscn2.cab
-$servers = @("Server01", "Server02", "Server03", "Server04")
+# Transfer wsusscn2.cab to each server, then run locally on each server:
 
-# Scan for missing updates
-foreach ($server in $servers) {
-    Get-LocalUpdateStatus -ComputerName $server -WSUSOfflineScan -WSUSScanFile "C:\Enterprise\WSUS\wsusscn2.cab" -UpdateSearchFilter 'IsInstalled=0' -ExportReport "C:\Reports\$server`_MissingUpdates_$(Get-Date -Format 'yyyyMMdd')"
-}
+# Server01 - scan for missing updates
+Get-LocalUpdateStatus -WSUSOfflineScan -WSUSScanFile "C:\Enterprise\WSUS\wsusscn2.cab" -UpdateSearchFilter 'IsInstalled=0' -ExportReport "C:\Reports\Server01_MissingUpdates_$(Get-Date -Format 'yyyyMMdd')"
 
-# Scan for installed updates
-foreach ($server in $servers) {
-    Get-LocalUpdateStatus -ComputerName $server -WSUSOfflineScan -WSUSScanFile "C:\Enterprise\WSUS\wsusscn2.cab" -UpdateSearchFilter 'IsInstalled=1' -ExportReport "C:\Reports\$server`_InstalledUpdates_$(Get-Date -Format 'yyyyMMdd')"
-}
+# Server02 - scan for installed updates  
+Get-LocalUpdateStatus -WSUSOfflineScan -WSUSScanFile "C:\Enterprise\WSUS\wsusscn2.cab" -UpdateSearchFilter 'IsInstalled=1' -ExportReport "C:\Reports\Server02_InstalledUpdates_$(Get-Date -Format 'yyyyMMdd')"
 
-# Scan for hidden updates
-foreach ($server in $servers) {
-    Get-LocalUpdateStatus -ComputerName $server -WSUSOfflineScan -WSUSScanFile "C:\Enterprise\WSUS\wsusscn2.cab" -UpdateSearchFilter 'IsHidden=1' -ExportReport "C:\Reports\$server`_HiddenUpdates_$(Get-Date -Format 'yyyyMMdd')"
-}
+# Server03 - scan for hidden updates
+Get-LocalUpdateStatus -WSUSOfflineScan -WSUSScanFile "C:\Enterprise\WSUS\wsusscn2.cab" -UpdateSearchFilter 'IsHidden=1' -ExportReport "C:\Reports\Server03_HiddenUpdates_$(Get-Date -Format 'yyyyMMdd')"
 
-# Bulk download missing updates for all servers
+# Bulk download missing updates for all servers (run on internet-connected machine)
 Get-ChildItem "C:\Reports\*_MissingUpdates_*.xml" | ForEach-Object {
     $serverName = ($_.BaseName -split '_')[0]
     Get-LocalUpdateStatus -ImportReport $_.FullName -DownloadUpdates -DownloadPath "C:\UpdateFiles\$serverName\MissingUpdates"
@@ -924,25 +917,25 @@ The script automatically detects and displays the Windows Update source:
 - Enhanced download summaries to show updates requiring manual download
 - **FIXED: WSUS offline scan now working correctly with wsusscn2.cab**
 
-## Quick Reference
+### Quick Reference
 
 ### Most Common Commands
 
 ```powershell
 # Basic scan for missing updates
-Get-LocalUpdateStatus -ComputerName localhost -UpdateSearchFilter "IsInstalled=0"
+Get-LocalUpdateStatus -UpdateSearchFilter "IsInstalled=0"
 
 # Enhanced batch download and install with user confirmation (v1.5.0)
-Get-LocalUpdateStatus -ComputerName localhost -UpdateSearchFilter "IsInstalled=0" -DownloadUpdates -InstallUpdates
+Get-LocalUpdateStatus -UpdateSearchFilter "IsInstalled=0" -DownloadUpdates -InstallUpdates
 
 # Download only (review before installing)
-Get-LocalUpdateStatus -ComputerName localhost -UpdateSearchFilter "IsInstalled=0" -DownloadUpdates -DownloadPath "C:\Updates"
+Get-LocalUpdateStatus -UpdateSearchFilter "IsInstalled=0" -DownloadUpdates -DownloadPath "C:\Updates"
 
 # WSUS offline scan with enhanced batch processing (run as Administrator)
-Get-LocalUpdateStatus -ComputerName localhost -WSUSOfflineScan -WSUSScanFile "C:\Path\To\wsusscn2.cab" -UpdateSearchFilter "IsInstalled=0" -DownloadUpdates -InstallUpdates
+Get-LocalUpdateStatus -WSUSOfflineScan -WSUSScanFile "C:\Path\To\wsusscn2.cab" -UpdateSearchFilter "IsInstalled=0" -DownloadUpdates -InstallUpdates
 
 # Export scan results for air-gapped systems
-Get-LocalUpdateStatus -ComputerName localhost -UpdateSearchFilter "IsInstalled=0" -ExportReport "C:\Temp\UpdateReport"
+Get-LocalUpdateStatus -UpdateSearchFilter "IsInstalled=0" -ExportReport "C:\Temp\UpdateReport"
 
 # Import and process exported results with enhanced workflow
 Get-LocalUpdateStatus -ImportReport "C:\Temp\UpdateReport.xml" -DownloadUpdates -InstallUpdates -DownloadPath "C:\Updates"
