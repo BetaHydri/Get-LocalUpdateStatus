@@ -65,13 +65,15 @@ Import previously exported XML report for processing.
 Enable WSUS offline scanning using wsusscn2.cab file.
 
 ### WSUSScanFile (Optional for WSUS Offline Mode)
-Path to existing wsusscn2.cab file for offline scanning.
+**Smart parameter that accepts:**
+- **Existing .cab file path**: Uses the file directly for scanning
+- **Directory path**: Downloads latest wsusscn2.cab to this location
+- **Not specified**: Downloads to `$env:TEMP` by default
 
-### DownloadWSUSScanFile (Optional for WSUS Offline Mode)
-Download latest wsusscn2.cab from Microsoft.
-
-### WSUSScanFileDownloadPath (Optional for WSUS Offline Mode)
-Directory path where wsusscn2.cab will be downloaded. Default: `$env:TEMP`
+**Examples:**
+- `"C:\WSUS\wsusscn2.cab"` - Use existing file
+- `"C:\WSUS"` - Download wsusscn2.cab to C:\WSUS directory
+- Not specified - Download to temp directory
 
 ## Usage Examples
 
@@ -122,17 +124,17 @@ Get-LocalUpdateStatus -UpdateSearchFilter 'IsHidden=0 and IsInstalled=0' -Downlo
 #### Download and Use Latest wsusscn2.cab
 
 ```powershell
-# Download wsusscn2.cab and scan for missing updates
-Get-LocalUpdateStatus -WSUSOfflineScan -DownloadWSUSScanFile -UpdateSearchFilter 'IsInstalled=0'
+# Download wsusscn2.cab to temp directory and scan for missing updates
+Get-LocalUpdateStatus -WSUSOfflineScan -UpdateSearchFilter 'IsInstalled=0'
 
 # Download wsusscn2.cab to custom location and scan
-Get-LocalUpdateStatus -WSUSOfflineScan -DownloadWSUSScanFile -WSUSScanFileDownloadPath "C:\WSUS" -UpdateSearchFilter 'IsInstalled=0'
+Get-LocalUpdateStatus -WSUSOfflineScan -WSUSScanFile "C:\WSUS" -UpdateSearchFilter 'IsInstalled=0'
 
 # Download wsusscn2.cab, scan, and download updates
-Get-LocalUpdateStatus -WSUSOfflineScan -DownloadWSUSScanFile -UpdateSearchFilter 'IsInstalled=0' -DownloadUpdates
+Get-LocalUpdateStatus -WSUSOfflineScan -UpdateSearchFilter 'IsInstalled=0' -DownloadUpdates
 
 # Download wsusscn2.cab, scan, download and install updates
-Get-LocalUpdateStatus -WSUSOfflineScan -DownloadWSUSScanFile -UpdateSearchFilter 'IsInstalled=0' -DownloadUpdates -InstallUpdates
+Get-LocalUpdateStatus -WSUSOfflineScan -UpdateSearchFilter 'IsInstalled=0' -DownloadUpdates -InstallUpdates
 ```
 
 #### Use Existing wsusscn2.cab (Completely Offline)
@@ -245,8 +247,8 @@ Transfer the downloaded update files to each server and install manually or use 
 ### Step 1: Prepare wsusscn2.cab (Internet-Connected Machine)
 
 ```powershell
-# Download latest wsusscn2.cab
-Get-LocalUpdateStatus -WSUSOfflineScan -DownloadWSUSScanFile -WSUSScanFileDownloadPath "C:\Portable"
+# Download latest wsusscn2.cab to portable location
+Get-LocalUpdateStatus -WSUSOfflineScan -WSUSScanFile "C:\Portable" -UpdateSearchFilter 'IsInstalled=0'
 ```
 
 ### Step 2: Offline Scanning (Air-Gapped Machine)
@@ -356,7 +358,7 @@ Get-LocalUpdateStatus -UpdateSearchFilter 'IsInstalled=0' -DownloadUpdates
 Get-LocalUpdateStatus -UpdateSearchFilter 'IsInstalled=0' -DownloadUpdates -InstallUpdates
 
 # WSUS offline scan
-Get-LocalUpdateStatus -WSUSOfflineScan -DownloadWSUSScanFile -UpdateSearchFilter 'IsInstalled=0'
+Get-LocalUpdateStatus -WSUSOfflineScan -UpdateSearchFilter 'IsInstalled=0'
 
 # Export for air-gapped transfer
 Get-LocalUpdateStatus -UpdateSearchFilter 'IsInstalled=0' -ExportReport "Updates"
