@@ -39,6 +39,7 @@ Get-LocalUpdateStatus provides a complete solution for Windows Update management
 
 **Advantages:**
 - ✅ **Always current**: Gets latest updates immediately from Microsoft
+- ✅ **Complete update scope**: Detects ALL update types (security, optional, feature updates, drivers, software updates)
 - ✅ **Complete metadata**: Full update descriptions, download URLs, and dependencies
 - ✅ **Automatic filtering**: Supports all filter combinations (compound filters like `'IsHidden=0 and IsInstalled=0'`)
 - ✅ **No preparation needed**: Works immediately with internet connection
@@ -54,14 +55,17 @@ Get-LocalUpdateStatus provides a complete solution for Windows Update management
 - Uses Microsoft's pre-built wsusscn2.cab file containing update metadata
 - Scans locally against the offline catalog without internet connectivity
 - wsusscn2.cab is typically updated monthly by Microsoft
+- **Focus**: Primarily contains security updates, critical updates, and security-related software updates
 
 **Advantages:**
 - ✅ **No internet required**: Perfect for air-gapped or restricted environments
 - ✅ **Consistent results**: Same scan results across multiple machines using same .cab file
 - ✅ **Portable**: Can be used on completely isolated networks
+- ✅ **Security-focused**: Excellent for security compliance and vulnerability management
 - ✅ **Security**: No external communication required during scanning
 
 **Limitations:**
+- ⚠️ **Limited update scope**: Primarily focuses on security-related updates, may miss optional software updates, feature updates, and drivers
 - ⚠️ **Update lag**: wsusscn2.cab may be days/weeks behind latest updates
 - ⚠️ **Limited filtering**: Compound filters may not work reliably
 - ⚠️ **Preparation required**: Must download wsusscn2.cab from internet-connected machine first
@@ -77,11 +81,14 @@ Get-LocalUpdateStatus provides a complete solution for Windows Update management
 | Scenario | Recommended Method | Reason |
 |----------|-------------------|---------|
 | **Development/Testing** | Local Scanning | Get latest updates immediately |
+| **All update types needed** | Local Scanning | Detects security + optional + feature updates |
+| **Security updates only** | WSUS Offline | Focused security baseline |
 | **Air-gapped networks** | WSUS Offline | No internet connectivity available |
-| **Compliance auditing** | WSUS Offline | Consistent baseline across all systems |
-| **Production with internet** | Local Scanning | Most current update information |
+| **Compliance auditing** | WSUS Offline | Consistent security baseline across systems |
+| **Production with internet** | Local Scanning | Most current and complete update information |
 | **Restricted environments** | WSUS Offline | Limited external communication |
-| **Quick daily checks** | Local Scanning | Real-time update status |
+| **Driver updates needed** | Local Scanning | WSUS offline may miss driver updates |
+| **Quick daily checks** | Local Scanning | Real-time status of all update types |
 
 ## Installation
 
