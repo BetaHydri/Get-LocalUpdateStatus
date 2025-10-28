@@ -28,6 +28,61 @@ Get-LocalUpdateStatus provides a complete solution for Windows Update management
 - **Local execution only** - script must be run directly on each computer to be scanned
 - Uses Microsoft Update Session COM objects
 
+## Local vs WSUS Offline Scanning
+
+### Local Scanning (Default Mode)
+**How it works:**
+- Connects directly to Microsoft Windows Update servers over the internet
+- Uses Windows Update Agent COM objects (Microsoft.Update.Session)
+- Real-time communication with Microsoft's update catalog
+- Provides the most current and comprehensive update information
+
+**Advantages:**
+- ✅ **Always current**: Gets latest updates immediately from Microsoft
+- ✅ **Complete metadata**: Full update descriptions, download URLs, and dependencies
+- ✅ **Automatic filtering**: Supports all filter combinations (compound filters like `'IsHidden=0 and IsInstalled=0'`)
+- ✅ **No preparation needed**: Works immediately with internet connection
+
+**Best for:**
+- Internet-connected environments
+- Getting the absolute latest updates
+- Development and testing scenarios
+- When you need complete update metadata
+
+### WSUS Offline Scanning (Air-Gapped Mode)
+**How it works:**
+- Uses Microsoft's pre-built wsusscn2.cab file containing update metadata
+- Scans locally against the offline catalog without internet connectivity
+- wsusscn2.cab is typically updated monthly by Microsoft
+
+**Advantages:**
+- ✅ **No internet required**: Perfect for air-gapped or restricted environments
+- ✅ **Consistent results**: Same scan results across multiple machines using same .cab file
+- ✅ **Portable**: Can be used on completely isolated networks
+- ✅ **Security**: No external communication required during scanning
+
+**Limitations:**
+- ⚠️ **Update lag**: wsusscn2.cab may be days/weeks behind latest updates
+- ⚠️ **Limited filtering**: Compound filters may not work reliably
+- ⚠️ **Preparation required**: Must download wsusscn2.cab from internet-connected machine first
+
+**Best for:**
+- Air-gapped or high-security environments
+- Compliance scanning with consistent baseline
+- Environments with restricted internet access
+- Multi-machine scanning with identical results
+
+### When to Use Each Method
+
+| Scenario | Recommended Method | Reason |
+|----------|-------------------|---------|
+| **Development/Testing** | Local Scanning | Get latest updates immediately |
+| **Air-gapped networks** | WSUS Offline | No internet connectivity available |
+| **Compliance auditing** | WSUS Offline | Consistent baseline across all systems |
+| **Production with internet** | Local Scanning | Most current update information |
+| **Restricted environments** | WSUS Offline | Limited external communication |
+| **Quick daily checks** | Local Scanning | Real-time update status |
+
 ## Installation
 
 1. Download the `Get-LocalUpdateStatus.ps1` file
