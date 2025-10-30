@@ -312,11 +312,11 @@ function Invoke-UpdateInstallation {
                   
                   # Check if this is a SCOM Agent related patch
                   $isSCOMPatch = ($Title -like "*SCOM*") -or 
-                                ($Title -like "*System Center Operations Manager*") -or
-                                ($Title -like "*Operations Manager*") -or
-                                ($fileName -like "*scom*") -or
-                                ($fileName -like "*mom*") -or
-                                ($mspFiles | Where-Object { $_.Name -like "*scom*" -or $_.Name -like "*mom*" -or $_.Name -like "*opsmgr*" })
+                  ($Title -like "*System Center Operations Manager*") -or
+                  ($Title -like "*Operations Manager*") -or
+                  ($fileName -like "*scom*") -or
+                  ($fileName -like "*mom*") -or
+                  ($mspFiles | Where-Object { $_.Name -like "*scom*" -or $_.Name -like "*mom*" -or $_.Name -like "*opsmgr*" })
                   
                   if ($isSCOMPatch) {
                     Write-Host "  SCOM Agent patch detected - using enhanced installation method..." -ForegroundColor Yellow
@@ -337,7 +337,8 @@ function Invoke-UpdateInstallation {
                         '/l*v'
                         (Join-Path $env:TEMP "SCOM_MSP_Install_$([System.Guid]::NewGuid().ToString('N')[0..7] -join '').log")
                       )
-                    } else {
+                    }
+                    else {
                       @(
                         '/p'
                         $mspFile.FullName
@@ -563,11 +564,11 @@ function Invoke-UpdateInstallation {
         
         # Check if this is a SCOM Agent related patch
         $isSCOMPatch = ($Title -like "*SCOM*") -or 
-                      ($Title -like "*System Center Operations Manager*") -or
-                      ($Title -like "*Operations Manager*") -or
-                      ($fileName -like "*scom*") -or
-                      ($fileName -like "*mom*") -or
-                      ($fileName -like "*opsmgr*")
+        ($Title -like "*System Center Operations Manager*") -or
+        ($Title -like "*Operations Manager*") -or
+        ($fileName -like "*scom*") -or
+        ($fileName -like "*mom*") -or
+        ($fileName -like "*opsmgr*")
         
         if ($isSCOMPatch) {
           Write-Host "  SCOM Agent patch detected - using enhanced installation method..." -ForegroundColor Yellow
@@ -585,7 +586,8 @@ function Invoke-UpdateInstallation {
             '/l*v'
             (Join-Path $env:TEMP "SCOM_MSP_Direct_$([System.Guid]::NewGuid().ToString('N')[0..7] -join '').log")
           )
-        } else {
+        }
+        else {
           @(
             '/p'
             $FilePath
