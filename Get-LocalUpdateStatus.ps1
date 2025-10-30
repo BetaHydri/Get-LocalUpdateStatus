@@ -252,17 +252,92 @@ function Invoke-UpdateInstallation {
               Write-Host "    - $($file.Name) ($($file.Extension.ToLower())) [$(($file.Length/1KB).ToString('F1')) KB]" -ForegroundColor DarkGray
             }
             
-            # Look for .msu files in extracted content
-            $msuFiles = Get-ChildItem -Path $tempDir -Filter "*.msu" -Recurse
-            if ($msuFiles) {
-              Write-Host "  Found $($msuFiles.Count) .msu file(s), attempting installation..." -ForegroundColor Cyan
-              foreach ($msuFile in $msuFiles) {
-                Write-Host "  Installing .msu file: $($msuFile.Name)" -ForegroundColor Gray
-                $wusaProcess = Start-Process -FilePath 'wusa.exe' -ArgumentList @($msuFile.FullName, '/quiet', '/norestart') -Wait -PassThru -NoNewWindow
-                if ($wusaProcess.ExitCode -eq 0 -or $wusaProcess.ExitCode -eq 3010) {
-                  $installationSuccess = $true
-                  Write-Host "  Installation successful via extracted .msu: $fileName" -ForegroundColor Green
-                  break
+            # Check if this is a SCOM-related update and prioritize .msp files
+            $isSCOMUpdate = ($Title -like "*SCOM*") -or 
+                           ($Title -like "*System Center*") -or
+                           ($Title -like "*Operations Manager*") -or
+                           ($fileName -like "*scom*") -or
+                           ($fileName -like "*mom*")
+            
+            # For SCOM updates, check .msp files first
+            if ($isSCOMUpdate) {
+              Write-Host "  SCOM-related update detected - checking for .msp files first..." -ForegroundColor Cyan
+              $mspFiles = Get-ChildItem -Path $tempDir -Filter "*.msp" -Recurse
+              if ($mspFiles) {
+                Write-Host "  Found $($mspFiles.Count) .msp file(s), attempting SCOM installation..." -ForegroundColor Cyan
+                
+                foreach ($mspFile in $mspFiles) {
+                  Write-Host "  Installing SCOM .msp patch: $($mspFile.Name)" -ForegroundColor Gray
+                  
+                  # Enhanced .msp installation arguments for SCOM Agent
+                  $mspArgs = @(
+                    '/p'
+                    $mspFile.FullName
+                    '/quiet'
+                    '/norestart'
+                    'REBOOT=ReallySuppress'
+                    'ALLUSERS=1'
+                    '/l*v'
+                    (Join-Path $env:TEMP "SCOM_MSP_Extract_$([System.Guid]::NewGuid().ToString('N')[0..7] -join '').log")
+                  )
+                  
+                  $mspProcess = Start-Process -FilePath 'msiexec.exe' -ArgumentList $mspArgs -Wait -PassThru -NoNewWindow
+                  
+                  if ($mspProcess.ExitCode -eq 0) {
+                    $installationSuccess = $true
+                    Write-Host "  SCOM installation successful via extracted .msp: $($mspFile.Name)" -ForegroundColor Green
+                    break
+                  }
+                  elseif ($mspProcess.ExitCode -eq 3010) {
+                    $installationSuccess = $true
+                    Write-Host "  SCOM installation successful (restart required): $($mspFile.Name)" -ForegroundColor Yellow
+                    break
+                  }
+                  elseif ($mspProcess.ExitCode -eq 1638) {
+                    $installationSuccess = $true
+                    Write-Host "  SCOM patch already applied: $($mspFile.Name)" -ForegroundColor Yellow
+                    break
+                  }
+                  elseif ($mspProcess.ExitCode -eq 1605) {
+                    Write-Host "  SCOM .msp installation failed: No products found to patch - $($mspFile.Name)" -ForegroundColor Red
+                    Write-Host "  This indicates the SCOM Agent is not installed or the patch is not applicable" -ForegroundColor Yellow
+                  }
+                  elseif ($mspProcess.ExitCode -eq 1619) {
+                    Write-Host "  SCOM .msp installation failed: Package couldn't be opened - $($mspFile.Name)" -ForegroundColor Red
+                    Write-Host "  Verify the .msp file integrity and permissions" -ForegroundColor Yellow
+                  }
+                  else {
+                    Write-Host "  SCOM .msp installation failed (Exit code: $($mspProcess.ExitCode)): $($mspFile.Name)" -ForegroundColor Red
+                    $logFile = $mspArgs | Where-Object { $_ -like "*.log" }
+                    if ($logFile -and (Test-Path $logFile)) {
+                      Write-Host "  Check SCOM installation log for details: $logFile" -ForegroundColor Cyan
+                    }
+                  }
+                }
+                
+                if (-not $installationSuccess) {
+                  Write-Host "  SCOM Agent patch installation failed. Common issues:" -ForegroundColor Yellow
+                  Write-Host "    - Ensure SCOM Agent is installed before applying patches" -ForegroundColor Gray
+                  Write-Host "    - Check if the patch matches the installed SCOM Agent version" -ForegroundColor Gray
+                  Write-Host "    - Verify Administrator privileges" -ForegroundColor Gray
+                  Write-Host "    - Check Windows Event Log for additional error details" -ForegroundColor Gray
+                }
+              }
+            }
+            
+            # Look for .msu files in extracted content (if not SCOM or SCOM .msp failed)
+            if (-not $installationSuccess) {
+              $msuFiles = Get-ChildItem -Path $tempDir -Filter "*.msu" -Recurse
+              if ($msuFiles) {
+                Write-Host "  Found $($msuFiles.Count) .msu file(s), attempting installation..." -ForegroundColor Cyan
+                foreach ($msuFile in $msuFiles) {
+                  Write-Host "  Installing .msu file: $($msuFile.Name)" -ForegroundColor Gray
+                  $wusaProcess = Start-Process -FilePath 'wusa.exe' -ArgumentList @($msuFile.FullName, '/quiet', '/norestart') -Wait -PassThru -NoNewWindow
+                  if ($wusaProcess.ExitCode -eq 0 -or $wusaProcess.ExitCode -eq 3010) {
+                    $installationSuccess = $true
+                    Write-Host "  Installation successful via extracted .msu: $fileName" -ForegroundColor Green
+                    break
+                  }
                 }
               }
             }
@@ -409,7 +484,25 @@ function Invoke-UpdateInstallation {
               return $true
             }
             else {
+              # Check if this looks like a SCOM-related update for enhanced error messaging
+              $isSCOMRelated = ($Title -like "*SCOM*") -or 
+                              ($Title -like "*System Center*") -or
+                              ($Title -like "*Operations Manager*") -or
+                              ($fileName -like "*scom*")
+              
               Write-Host "  No installable content found in extracted .cab file: $fileName" -ForegroundColor Red
+              
+              if ($isSCOMRelated) {
+                Write-Host "  SCOM Agent update detected. Common issues:" -ForegroundColor Yellow
+                Write-Host "    - Ensure SCOM Agent is installed before applying updates" -ForegroundColor Gray
+                Write-Host "    - Check if this update is applicable to your SCOM Agent version" -ForegroundColor Gray
+                Write-Host "    - Some SCOM updates require specific prerequisites" -ForegroundColor Gray
+                Write-Host "    - Verify the .cab file contains the expected .msp files" -ForegroundColor Gray
+              }
+              else {
+                Write-Host "  The .cab file may require manual installation or specific prerequisites" -ForegroundColor Yellow
+              }
+              
               return $false
             }
             
