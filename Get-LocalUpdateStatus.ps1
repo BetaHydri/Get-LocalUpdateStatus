@@ -1014,12 +1014,14 @@ function Get-LocalUpdateStatus {
         Write-Host "`nAir-gapped mode detected: Found $($existingUpdates.Count) existing update files in '$DownloadPath'" -ForegroundColor Cyan
         Write-Host "Proceeding with installation from pre-downloaded files..." -ForegroundColor Green
         $DownloadUpdates = $false  # Explicitly disable downloading
-      } else {
+      }
+      else {
         Write-Error "InstallUpdates without DownloadUpdates requires existing update files in '$DownloadPath'. No update files found (.cab, .msu, .msi, .msp, .exe)."
         Write-Host "For air-gapped environments: Copy your pre-downloaded updates to '$DownloadPath' and run again." -ForegroundColor Yellow
         return
       }
-    } else {
+    }
+    else {
       Write-Error "InstallUpdates without DownloadUpdates requires the DownloadPath '$DownloadPath' to exist with update files."
       Write-Host "For air-gapped environments: Create directory '$DownloadPath' and copy your pre-downloaded updates there." -ForegroundColor Yellow
       return
