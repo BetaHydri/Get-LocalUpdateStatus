@@ -1,7 +1,7 @@
 <#
 PSScriptInfo
 
-.VERSION 1.8.2
+.VERSION 1.8.3
 
 .GUID 4b937790-b06b-427f-8c1f-565030ae0227
 
@@ -995,8 +995,93 @@ function Get-LocalUpdateStatus {
         }
         return $true
       })]
-    [System.String]$WSUSScanFile = "$env:TEMP"
+    [System.String]$WSUSScanFile = "$env:TEMP",
+
+    [Parameter(Mandatory = $true, ParameterSetName = 'QuickHelp')]
+    [Switch]$QuickHelp
   )
+
+  # Handle QuickHelp mode
+  if ($PSCmdlet.ParameterSetName -eq 'QuickHelp') {
+    @"
+
+================================================================================
+  GET-LOCALUPDATESTATUS - QUICK HELP & EXAMPLES
+================================================================================
+
+📋 MOST COMMON OPERATIONS:
+
+1. Scan for missing updates
+   Get-LocalUpdateStatus -UpdateSearchFilter 'IsInstalled=0'
+
+2. Download missing updates  
+   Get-LocalUpdateStatus -UpdateSearchFilter 'IsInstalled=0' -DownloadUpdates
+
+3. Download and install updates
+   Get-LocalUpdateStatus -UpdateSearchFilter 'IsInstalled=0' -DownloadUpdates -InstallUpdates
+
+🌐 AIR-GAPPED ENVIRONMENTS:
+
+1. Install from pre-downloaded files (any compatible files)
+   Get-LocalUpdateStatus -UpdateSearchFilter 'IsInstalled=0' -InstallUpdates -DownloadPath 'C:\Updates'
+
+2. Secure air-gapped workflow (RECOMMENDED)
+   # Step 1 (target machine): Export scan
+   Get-LocalUpdateStatus -UpdateSearchFilter 'IsInstalled=0' -ExportReport 'scan.xml'
+   # Step 2 (internet machine): Download updates  
+   Get-LocalUpdateStatus -ImportReport 'scan.xml' -DownloadUpdates -DownloadPath 'C:\Updates'
+   # Step 3 (target machine): Install only matched updates
+   Get-LocalUpdateStatus -ImportReport 'scan.xml' -InstallUpdates -DownloadPath 'C:\Updates'
+
+🔍 WSUS OFFLINE SCANNING:
+
+1. Download and use latest wsusscn2.cab
+   Get-LocalUpdateStatus -WSUSOfflineScan -UpdateSearchFilter 'IsInstalled=0'
+
+2. Use existing wsusscn2.cab (completely offline)
+   Get-LocalUpdateStatus -WSUSOfflineScan -WSUSScanFile 'C:\wsusscn2.cab' -UpdateSearchFilter 'IsInstalled=0'
+
+📊 COMMON FILTERS:
+   'IsInstalled=0'           - Missing updates
+   'IsInstalled=1'           - Installed updates  
+   'IsHidden=0'              - Visible updates
+   'IsHidden=1'              - Hidden updates
+   'IsHidden=0 and IsInstalled=0' - Visible missing updates
+   'IsHidden=0 and IsInstalled=1' - Visible installed updates
+
+📁 SUPPORTED FILE TYPES:
+   .cab files  - DISM installation with automatic extraction fallback
+   .msu files  - WUSA installation
+   .msi files  - msiexec installation
+   .msp files  - msiexec patch installation
+   .exe files  - Silent installation with smart switches
+
+🚀 QUICK START EXAMPLES:
+
+• Check what updates are missing:
+  Get-LocalUpdateStatus 'IsInstalled=0'
+
+• Download updates to default location:
+  Get-LocalUpdateStatus 'IsInstalled=0' -DownloadUpdates
+
+• Install from pre-downloaded directory:
+  Get-LocalUpdateStatus 'IsInstalled=0' -InstallUpdates -DownloadPath 'C:\MyUpdates'
+
+• Export scan for air-gapped transfer:
+  Get-LocalUpdateStatus 'IsInstalled=0' -ExportReport 'updates'
+
+• WSUS offline scan:
+  Get-LocalUpdateStatus -WSUSOfflineScan 'IsInstalled=0'
+
+💡 TIP: For detailed help with all parameters, use: Get-Help Get-LocalUpdateStatus -Full
+
+================================================================================
+  Script Version 1.8.3 | Run as Administrator Required
+================================================================================
+
+"@ | Write-Host -ForegroundColor Cyan
+    return
+  }
 
   # Check for admin privileges
   if (-not ([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole] "Administrator")) {
@@ -1263,7 +1348,7 @@ function Get-LocalUpdateStatus {
         $updatesWithUrls = ($MyUpdates | Where-Object { $_.DownloadURL }).Count
         $successfulDownloads = ($MyUpdates | Where-Object { $_.DownloadSuccess -eq $true }).Count
         
-        $summaryTitle = if ($InstallUpdates) { "FINAL IMPORT, DOWNLOAD & INSTALLATION SUMMARY" } else { "FINAL IMPORT & DOWNLOAD SUMMARY" }
+        $summaryTitle = if ($InstallUpdates) { "FINAL IMPORT, DOWNLOAD `& INSTALLATION SUMMARY" } else { "FINAL IMPORT `& DOWNLOAD SUMMARY" }
         Write-Host ("`n" + "=" * 60) -ForegroundColor Cyan
         Write-Host $summaryTitle -ForegroundColor Cyan
         Write-Host ("=" * 60) -ForegroundColor Cyan
@@ -1681,7 +1766,7 @@ function Get-LocalUpdateStatus {
       $criticalUpdates = ($MyUpdates | Where-Object { $_.SeverityText -eq 'Critical' }).Count
       $importantUpdates = ($MyUpdates | Where-Object { $_.SeverityText -eq 'Important' }).Count
       
-      $summaryTitle = if ($InstallUpdates) { "FINAL WSUS OFFLINE SCAN, DOWNLOAD & INSTALLATION SUMMARY" } else { "FINAL WSUS OFFLINE SCAN SUMMARY" }
+      $summaryTitle = if ($InstallUpdates) { "FINAL WSUS OFFLINE SCAN, DOWNLOAD `& INSTALLATION SUMMARY" } else { "FINAL WSUS OFFLINE SCAN SUMMARY" }
       Write-Host ("`n" + "=" * 60) -ForegroundColor Cyan
       Write-Host $summaryTitle -ForegroundColor Cyan
       Write-Host ("=" * 60) -ForegroundColor Cyan
@@ -1964,7 +2049,7 @@ function Get-LocalUpdateStatus {
     $updatesWithoutUrls = $totalUpdates - $updatesWithUrls
     $successfulDownloads = ($MyUpdates | Where-Object { $_.DownloadSuccess -eq $true }).Count
     
-    $summaryTitle = if ($InstallUpdates) { "FINAL DOWNLOAD & INSTALLATION SUMMARY" } else { "FINAL DOWNLOAD SUMMARY" }
+    $summaryTitle = if ($InstallUpdates) { "FINAL DOWNLOAD `& INSTALLATION SUMMARY" } else { "FINAL DOWNLOAD SUMMARY" }
     Write-Host ("`n" + "=" * 60) -ForegroundColor Cyan
     Write-Host $summaryTitle -ForegroundColor Cyan
     Write-Host ("=" * 60) -ForegroundColor Cyan
@@ -2015,5 +2100,5 @@ function Get-LocalUpdateStatus {
     Write-Host "`nNo missing updates found - system is up to date!" -ForegroundColor Green
   }
 
-  $MyUpdates
+  return $MyUpdates
 }

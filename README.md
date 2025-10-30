@@ -138,6 +138,24 @@ Enable WSUS offline scanning using wsusscn2.cab file.
 - `"C:\WSUS"` - Download wsusscn2.cab to C:\WSUS directory
 - Not specified - Download to temp directory
 
+### QuickHelp (Optional)
+**Switch parameter that displays comprehensive usage examples and quick reference guide.**
+
+When used, the script displays:
+- Most common operations with examples
+- Air-gapped environment workflows  
+- WSUS offline scanning examples
+- Common filter explanations
+- Supported file types
+- Quick start commands
+
+**Usage:** `-QuickHelp`
+
+**Example:**
+```powershell
+Get-LocalUpdateStatus -QuickHelp
+```
+
 ## Usage Examples
 
 ### Basic Scanning
@@ -494,6 +512,9 @@ Recommendation: Restart the computer to complete installation
 ## Quick Reference
 
 ```powershell
+# Get instant help with examples
+Get-LocalUpdateStatus -QuickHelp
+
 # Most common operations:
 
 # Scan for missing updates
@@ -556,7 +577,7 @@ If you encounter errors with filters like `'IsHidden=0 and IsInstalled=0'` in of
 
 ## Version Information
 
-- **Version:** 1.8.2
+- **Version:** 1.8.3
 - **Author:** Jan Tiedemann  
 - **Copyright:** 2021-2025
 - **Requirements:** PowerShell 4.0+, Administrator privileges
