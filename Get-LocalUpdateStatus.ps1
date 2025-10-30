@@ -175,6 +175,25 @@ function Invoke-UpdateInstallation {
                   }
                 }
                 
+                # If no .msi worked, try .msp files (Microsoft Patch files)
+                if (-not $installSuccess) {
+                  $mspFiles = $allFiles | Where-Object { $_.Extension -eq '.msp' }
+                  foreach ($mspFile in $mspFiles) {
+                    Write-Host "  Attempting to install MSP patch: $($mspFile.Name)" -ForegroundColor Yellow
+                    try {
+                      $mspProcess = Start-Process -FilePath 'msiexec.exe' -ArgumentList @('/p', $mspFile.FullName, '/quiet', '/norestart', 'REBOOT=ReallySuppress') -Wait -PassThru -NoNewWindow
+                      if ($mspProcess.ExitCode -eq 0 -or $mspProcess.ExitCode -eq 3010 -or $mspProcess.ExitCode -eq 1638) {
+                        $installSuccess = $true
+                        Write-Host "  Installation successful via extracted .msp: $($mspFile.Name)" -ForegroundColor Green
+                        break
+                      }
+                    }
+                    catch {
+                      Write-Host "  Failed to execute $($mspFile.Name): $($_.Exception.Message)" -ForegroundColor Red
+                    }
+                  }
+                }
+                
                 Remove-Item -Path $tempDir -Recurse -Force -ErrorAction SilentlyContinue
                 
                 if ($installSuccess) {
@@ -254,6 +273,43 @@ function Invoke-UpdateInstallation {
                     }
                     else {
                       Write-Host "  .msi installation failed (Exit code: $($msiProcess.ExitCode)): $($msiFile.Name)" -ForegroundColor Red
+                    }
+                  }
+                }
+                
+                # Look for .msp files (Microsoft Patch files) if .msi installation failed
+                if (-not $installationSuccess) {
+                  $mspFiles = Get-ChildItem -Path $tempDir -Filter "*.msp" -Recurse
+                  if ($mspFiles) {
+                    foreach ($mspFile in $mspFiles) {
+                      Write-Host "  Found extracted .msp file, installing with msiexec..." -ForegroundColor Gray
+                      $mspArgs = @(
+                        '/p'
+                        $mspFile.FullName
+                        '/quiet'
+                        '/norestart'
+                        'REBOOT=ReallySuppress'
+                      )
+                      
+                      $mspProcess = Start-Process -FilePath 'msiexec.exe' -ArgumentList $mspArgs -Wait -PassThru -NoNewWindow
+                      if ($mspProcess.ExitCode -eq 0) {
+                        $installationSuccess = $true
+                        Write-Host "  Installation successful via extracted .msp: $fileName" -ForegroundColor Green
+                        break
+                      }
+                      elseif ($mspProcess.ExitCode -eq 3010) {
+                        $installationSuccess = $true
+                        Write-Host "  Installation successful via extracted .msp (restart required): $fileName" -ForegroundColor Yellow
+                        break
+                      }
+                      elseif ($mspProcess.ExitCode -eq 1638) {
+                        $installationSuccess = $true
+                        Write-Host "  Installation skipped: Patch already applied - $fileName" -ForegroundColor Yellow
+                        break
+                      }
+                      else {
+                        Write-Host "  .msp installation failed (Exit code: $($mspProcess.ExitCode)): $($mspFile.Name)" -ForegroundColor Red
+                      }
                     }
                   }
                 }
@@ -415,9 +471,57 @@ function Invoke-UpdateInstallation {
         }
       }
       
+      '.msp' {
+        # Use msiexec for .msp files (Microsoft Patch files)
+        Write-Host "  Using msiexec for .msp patch installation..." -ForegroundColor Gray
+        $mspArgs = @(
+          '/p'
+          $FilePath
+          '/quiet'
+          '/norestart'
+          'REBOOT=ReallySuppress'
+        )
+        
+        $process = Start-Process -FilePath 'msiexec.exe' -ArgumentList $mspArgs -Wait -PassThru -NoNewWindow
+        
+        if ($process.ExitCode -eq 0) {
+          Write-Host "  Installation successful: $fileName" -ForegroundColor Green
+          return $true
+        }
+        elseif ($process.ExitCode -eq 3010) {
+          Write-Host "  Installation successful (restart required): $fileName" -ForegroundColor Yellow
+          return $true
+        }
+        elseif ($process.ExitCode -eq 1638) {
+          Write-Host "  Installation skipped: Patch already applied - $fileName" -ForegroundColor Yellow
+          return $true
+        }
+        elseif ($process.ExitCode -eq 1605) {
+          Write-Host "  Installation failed: No products found to patch - $fileName" -ForegroundColor Red
+          return $false
+        }
+        elseif ($process.ExitCode -eq 1619) {
+          Write-Host "  Installation failed: Package could not be opened - $fileName" -ForegroundColor Red
+          return $false
+        }
+        elseif ($process.ExitCode -eq 1633) {
+          Write-Host "  Installation failed: Platform not supported - $fileName" -ForegroundColor Red
+          return $false
+        }
+        elseif ($process.ExitCode -eq 1636) {
+          Write-Host "  Installation failed: Patch package cannot be opened - $fileName" -ForegroundColor Red
+          return $false
+        }
+        else {
+          Write-Host "  Installation failed: $fileName (Exit code: $($process.ExitCode))" -ForegroundColor Red
+          Write-Host "  Note: MSP error codes indicate patch-specific installation issues" -ForegroundColor Gray
+          return $false
+        }
+      }
+      
       default {
         Write-Host "  Installation failed: Unsupported file type '$fileExtension' for $fileName" -ForegroundColor Red
-        Write-Host "  Supported types: .cab (DISM), .msu (WUSA), .msi (msiexec), .exe (Silent)" -ForegroundColor Gray
+        Write-Host "  Supported types: .cab (DISM), .msu (WUSA), .msi (msiexec), .msp (msiexec), .exe (Silent)" -ForegroundColor Gray
         return $false
       }
     }
