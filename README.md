@@ -481,7 +481,7 @@ If you encounter errors with filters like `'IsHidden=0 and IsInstalled=0'` in of
 
 ## Version Information
 
-- **Version:** 1.7.0
+- **Version:** 1.8.0
 - **Author:** Jan Tiedemann  
 - **Copyright:** 2021-2025
 - **Requirements:** PowerShell 4.0+, Administrator privileges
