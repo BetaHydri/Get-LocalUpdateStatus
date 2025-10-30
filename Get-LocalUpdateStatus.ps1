@@ -1,7 +1,7 @@
 <#
 PSScriptInfo
 
-.VERSION 1.8.0
+.VERSION 1.8.2
 
 .GUID 4b937790-b06b-427f-8c1f-565030ae0227
 
@@ -11,7 +11,7 @@ PSScriptInfo
 
 .COPYRIGHT 2025
 
-.TAGS Updates, WindowsUpdates, Download, Export, Import, WSUS, Offline, BatchInstall
+.TAGS Updates, WindowsUpdates, Download, Export, Import, WSUS, Offline, BatchInstall, AirGapped, Security
 
 .DESCRIPTION 
 Enumerates missing or installed Windows Updates on the local computer and returns an array of objects with update details. 
@@ -20,6 +20,73 @@ Supports exporting scan results and importing them on other machines for downloa
 Supports WSUS offline scanning using wsusscn2.cab for air-gapped environments.
 Includes interactive installation confirmation and detailed batch processing summaries.
 This function operates on the local computer only - run directly on each machine to be scanned.
+
+.PARAMETER UpdateSearchFilter
+Specifies the search criteria for Windows Update. Default: 'IsHidden=0 and IsInstalled=0'
+Common values:
+- 'IsHidden=0 and IsInstalled=0' : Show available updates (default)
+- 'IsInstalled=1' : Show installed updates
+- 'IsInstalled=0' : Show missing updates
+
+.PARAMETER DownloadUpdates  
+Downloads updates to the specified path. Not required for air-gapped installations with pre-downloaded files.
+
+.PARAMETER InstallUpdates
+Installs updates from the download path. Can be used without -DownloadUpdates for air-gapped scenarios.
+
+.PARAMETER DownloadPath
+Directory where updates are downloaded or where pre-downloaded updates are located.
+Default: $env:TEMP\WindowsUpdates
+
+.EXAMPLE
+# Basic scan for missing updates
+Get-LocalUpdateStatus -UpdateSearchFilter 'IsHidden=0 and IsInstalled=0'
+
+.EXAMPLE  
+# Download and install updates (internet-connected environment)
+Get-LocalUpdateStatus -UpdateSearchFilter 'IsHidden=0 and IsInstalled=0' -DownloadUpdates -InstallUpdates
+
+.EXAMPLE
+# Air-gapped installation from pre-downloaded updates
+# First: Copy your .cab/.msu/.msi/.msp/.exe files to C:\Updates
+# Then run:
+Get-LocalUpdateStatus -UpdateSearchFilter 'IsHidden=0 and IsInstalled=0' -InstallUpdates -DownloadPath 'C:\Updates'
+
+.EXAMPLE
+# Air-gapped workflow with import/export (RECOMMENDED for precision)
+# Step 1 (on target machine): Export scan results
+Get-LocalUpdateStatus -UpdateSearchFilter 'IsHidden=0 and IsInstalled=0' -ExportReport 'C:\UpdateScan.xml'
+# Step 2 (on internet machine): Download updates using exported scan
+Get-LocalUpdateStatus -ImportReport 'C:\UpdateScan.xml' -DownloadUpdates -DownloadPath 'C:\Updates'
+# Step 3 (on target machine): Install only the updates from the XML
+Get-LocalUpdateStatus -ImportReport 'C:\UpdateScan.xml' -InstallUpdates -DownloadPath 'C:\Updates'
+
+.EXAMPLE
+# Air-gapped SCOM agent patch installation
+# Copy kb4580254-amd64-agent_b53cd0d05249917d69f5872cd002e194c8fdf486.cab to C:\SCOMPatches
+Get-LocalUpdateStatus -UpdateSearchFilter 'IsHidden=0 and IsInstalled=0' -InstallUpdates -DownloadPath 'C:\SCOMPatches'
+
+.EXAMPLE
+# Export scan results for download on another machine
+Get-LocalUpdateStatus -UpdateSearchFilter 'IsHidden=0 and IsInstalled=0' -ExportReport 'C:\UpdateScan.xml'
+
+.EXAMPLE
+# Import and download updates from exported scan
+Get-LocalUpdateStatus -ImportReport 'C:\UpdateScan.xml' -DownloadUpdates -DownloadPath 'C:\Updates'
+
+.NOTES
+Air-gapped Environment Workflow:
+1. On internet-connected machine: Export scan results or download updates
+2. Copy updates to air-gapped machine
+3. On air-gapped machine: Use -InstallUpdates with -DownloadPath (no -DownloadUpdates needed)
+
+Air-gapped Security Features:
+- With -ImportReport: Only installs updates that match the imported XML (precise control)
+- Without -ImportReport: Installs any compatible update files in the directory
+- File matching: By KB ID in filename, then by title keywords for complex packages
+- Security warning: Reports unmatched files that will be ignored
+
+Supported file types: .cab (DISM), .msu (WUSA), .msi/.msp (msiexec), .exe (silent)
 #>
 
 # Helper function to install updates (.cab via DISM, .msu via WUSA, .exe via silent execution)
@@ -938,10 +1005,25 @@ function Get-LocalUpdateStatus {
     break
   }
 
-  # Validate parameter combinations
+  # Validate parameter combinations for air-gapped environments
   if ($InstallUpdates -and -not $DownloadUpdates) {
-    Write-Error "InstallUpdates requires DownloadUpdates to be enabled. Use both -DownloadUpdates and -InstallUpdates parameters."
-    return
+    # Check if DownloadPath contains existing update files (air-gapped scenario)
+    if (Test-Path $DownloadPath) {
+      $existingUpdates = Get-ChildItem -Path $DownloadPath -Include "*.cab", "*.msu", "*.msi", "*.msp", "*.exe" -Recurse -ErrorAction SilentlyContinue
+      if ($existingUpdates.Count -gt 0) {
+        Write-Host "`nAir-gapped mode detected: Found $($existingUpdates.Count) existing update files in '$DownloadPath'" -ForegroundColor Cyan
+        Write-Host "Proceeding with installation from pre-downloaded files..." -ForegroundColor Green
+        $DownloadUpdates = $false  # Explicitly disable downloading
+      } else {
+        Write-Error "InstallUpdates without DownloadUpdates requires existing update files in '$DownloadPath'. No update files found (.cab, .msu, .msi, .msp, .exe)."
+        Write-Host "For air-gapped environments: Copy your pre-downloaded updates to '$DownloadPath' and run again." -ForegroundColor Yellow
+        return
+      }
+    } else {
+      Write-Error "InstallUpdates without DownloadUpdates requires the DownloadPath '$DownloadPath' to exist with update files."
+      Write-Host "For air-gapped environments: Create directory '$DownloadPath' and copy your pre-downloaded updates there." -ForegroundColor Yellow
+      return
+    }
   }
 
   # Handle import report mode
@@ -1055,10 +1137,70 @@ function Get-LocalUpdateStatus {
 
         # PHASE 2: BATCH INSTALLATION PROCESSING (IMPORT MODE)
         if ($InstallUpdates) {
-          $updatesToInstall = $MyUpdates | Where-Object { $_.DownloadSuccess -eq $true -and $_.DownloadedFilePath }
+          # For air-gapped environments, match imported updates with existing files
+          $updatesToInstall = @()
+          
+          # First, try to match updates with downloaded files
+          $downloadSuccessUpdates = $MyUpdates | Where-Object { $_.DownloadSuccess -eq $true -and $_.DownloadedFilePath }
+          if ($downloadSuccessUpdates) {
+            $updatesToInstall += $downloadSuccessUpdates
+          }
+          
+          # Then, for air-gapped scenarios, match remaining imported updates with existing files in download path
+          $remainingUpdates = $MyUpdates | Where-Object { $_.DownloadSuccess -ne $true -or -not $_.DownloadedFilePath }
+          if ($remainingUpdates -and (Test-Path $DownloadPath)) {
+            Write-Host "`nAir-gapped mode: Searching for matching update files in '$DownloadPath'..." -ForegroundColor Cyan
+            
+            # Get all potential update files in the directory
+            $existingFiles = Get-ChildItem -Path $DownloadPath -Include "*.cab", "*.msu", "*.msi", "*.msp", "*.exe" -Recurse -ErrorAction SilentlyContinue
+            
+            foreach ($update in $remainingUpdates) {
+              $matchedFile = $null
+              
+              # Try to match by KB ID in filename
+              $kbPattern = "*$($update.KbId)*"
+              $matchedFile = $existingFiles | Where-Object { $_.Name -like $kbPattern } | Select-Object -First 1
+              
+              # If no KB match, try to match by title keywords (for complex packages)
+              if (-not $matchedFile -and $update.Title) {
+                $titleWords = ($update.Title -split '\s+' | Where-Object { $_.Length -gt 3 -and $_ -notmatch '^\d+$' }) | Select-Object -First 3
+                foreach ($word in $titleWords) {
+                  $matchedFile = $existingFiles | Where-Object { $_.Name -like "*$word*" } | Select-Object -First 1
+                  if ($matchedFile) { break }
+                }
+              }
+              
+              if ($matchedFile) {
+                Write-Host "  Matched KB$($update.KbId) with file: $($matchedFile.Name)" -ForegroundColor Green
+                
+                # Add the matched file info to the update object
+                $update | Add-Member -MemberType NoteProperty -Name DownloadSuccess -Value $true -Force
+                $update | Add-Member -MemberType NoteProperty -Name DownloadedFilePath -Value $matchedFile.FullName -Force
+                $update | Add-Member -MemberType NoteProperty -Name DownloadedFileSize -Value $matchedFile.Length -Force
+                $update | Add-Member -MemberType NoteProperty -Name DownloadReason -Value "Air-gapped file match" -Force
+                
+                $updatesToInstall += $update
+                
+                # Remove from available files to prevent double-matching
+                $existingFiles = $existingFiles | Where-Object { $_.FullName -ne $matchedFile.FullName }
+              }
+              else {
+                Write-Host "  No matching file found for KB$($update.KbId): $($update.Title)" -ForegroundColor Yellow
+              }
+            }
+            
+            # Report any unmatched files (security awareness)
+            if ($existingFiles.Count -gt 0) {
+              Write-Host "`nWarning: Found $($existingFiles.Count) update files that don't match imported updates:" -ForegroundColor Yellow
+              foreach ($unmatchedFile in $existingFiles) {
+                Write-Host "  - $($unmatchedFile.Name) (not in XML - will be ignored)" -ForegroundColor Gray
+              }
+              Write-Host "Only updates from the imported XML will be installed for security." -ForegroundColor Cyan
+            }
+          }
           
           if ($updatesToInstall -and $updatesToInstall.Count -gt 0) {
-            Write-Host "`nProceeding with batch installation..." -ForegroundColor Cyan
+            Write-Host "`nProceeding with batch installation of $($updatesToInstall.Count) matched updates..." -ForegroundColor Cyan
             
             # Ask for confirmation before installing
             Write-Host "`nWARNING: About to install $($updatesToInstall.Count) Windows Update(s)" -ForegroundColor Yellow

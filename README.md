@@ -182,6 +182,54 @@ Get-LocalUpdateStatus -UpdateSearchFilter 'IsInstalled=0' -DownloadUpdates -Inst
 Get-LocalUpdateStatus -UpdateSearchFilter 'IsHidden=0 and IsInstalled=0' -DownloadUpdates -InstallUpdates
 ```
 
+### Air-Gapped Installation (Pre-Downloaded Updates)
+
+For environments where updates have been pre-downloaded and copied from another machine:
+
+#### Method 1: Direct Installation (Any Compatible Files)
+```powershell
+# Install from pre-downloaded updates (no -DownloadUpdates needed)
+# First: Copy your .cab/.msu/.msi/.msp/.exe files to C:\Updates
+Get-LocalUpdateStatus -UpdateSearchFilter 'IsInstalled=0' -InstallUpdates -DownloadPath "C:\Updates"
+
+# Install SCOM agent patches from pre-downloaded location
+# Copy kb4580254-amd64-agent_b53cd0d05249917d69f5872cd002e194c8fdf486.cab to C:\SCOMPatches
+Get-LocalUpdateStatus -UpdateSearchFilter 'IsInstalled=0' -InstallUpdates -DownloadPath "C:\SCOMPatches"
+
+# Install from custom pre-downloaded location
+Get-LocalUpdateStatus -UpdateSearchFilter 'IsInstalled=0' -InstallUpdates -DownloadPath "D:\PreDownloadedUpdates"
+```
+
+#### Method 2: Precise Import-Based Installation (RECOMMENDED for Security)
+```powershell
+# Step 1 (on target air-gapped machine): Export what updates are needed
+Get-LocalUpdateStatus -UpdateSearchFilter 'IsInstalled=0' -ExportReport 'C:\UpdateScan.xml'
+
+# Step 2 (on internet-connected machine): Download the exact updates
+Get-LocalUpdateStatus -ImportReport 'C:\UpdateScan.xml' -DownloadUpdates -DownloadPath 'C:\Updates'
+
+# Step 3 (back on air-gapped machine): Install ONLY the updates from the XML
+Get-LocalUpdateStatus -ImportReport 'C:\UpdateScan.xml' -InstallUpdates -DownloadPath 'C:\Updates'
+```
+
+**Key Differences Between Methods:**
+- **Method 1**: Installs any compatible update files found in the directory
+- **Method 2**: Only installs updates that match the exported XML report (more secure and precise)
+
+**Security Features in Method 2:**
+- ✅ **Precise matching**: Only installs updates identified in the original scan
+- ✅ **KB ID matching**: Matches files by KB number in filename
+- ✅ **Smart matching**: Falls back to title keywords for complex packages  
+- ✅ **Security warnings**: Reports any unmatched files that will be ignored
+- ✅ **No surprises**: Won't install unexpected updates that happen to be in the directory
+
+**Key Benefits for Air-Gapped Environments:**
+- ✅ **No internet required** during installation phase
+- ✅ **No -DownloadUpdates switch** needed when files already exist  
+- ✅ **Automatic detection** of pre-downloaded update files
+- ✅ **Smart file type support** for .cab/.msu/.msi/.msp/.exe formats
+- ✅ **Enhanced .cab extraction** with dual methods for complex packages
+
 ### WSUS Offline Scanning
 
 #### Download and Use Latest wsusscn2.cab
@@ -251,6 +299,33 @@ Get-LocalUpdateStatus -ImportReport "C:\Reports\MissingUpdates.xml" -DownloadUpd
 
 # Import, download and prepare for installation
 Get-LocalUpdateStatus -ImportReport "C:\Reports\MissingUpdates.xml" -DownloadUpdates -InstallUpdates -DownloadPath "C:\UpdateFiles\Server01"
+```
+
+#### Step 3: Precise Air-Gapped Installation (Back on Target Machine)
+
+```powershell
+# Install only the updates that match the exported XML (RECOMMENDED)
+Get-LocalUpdateStatus -ImportReport "C:\Reports\MissingUpdates.xml" -InstallUpdates -DownloadPath "C:\UpdateFiles\Server01"
+
+# This approach provides:
+# - Precise control: Only installs updates from the original scan
+# - Security: Won't install unexpected files that happen to be in the directory  
+# - Matching: Automatically matches files by KB ID or title keywords
+# - Reporting: Shows which files match and which don't
+```
+
+**Example Output for Air-Gapped Import Installation:**
+```
+Air-gapped mode: Searching for matching update files in 'C:\Updates'...
+  Matched KB5034441 with file: KB5034441.msu
+  Matched KB5034442 with file: windows10.0-kb5034442-x64_abc123.cab
+  No matching file found for KB5034443: Definition Update for Windows Defender
+
+Warning: Found 1 update files that don't match imported updates:
+  - RandomUpdate.msu (not in XML - will be ignored)
+Only updates from the imported XML will be installed for security.
+
+Proceeding with batch installation of 2 matched updates...
 ```
 
 ### Export Report with Different Filters
@@ -481,7 +556,7 @@ If you encounter errors with filters like `'IsHidden=0 and IsInstalled=0'` in of
 
 ## Version Information
 
-- **Version:** 1.8.0
+- **Version:** 1.8.2
 - **Author:** Jan Tiedemann  
 - **Copyright:** 2021-2025
 - **Requirements:** PowerShell 4.0+, Administrator privileges
