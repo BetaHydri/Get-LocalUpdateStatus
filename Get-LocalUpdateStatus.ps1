@@ -362,7 +362,7 @@ function Invoke-UpdateInstallation {
             return $false
           }
         }
-        elseif ($process.ExitCode -eq 50) {
+        if ($process.ExitCode -eq 50) {
           Write-Host "  Installation skipped: Package not applicable to this system - $fileName" -ForegroundColor Yellow
           return $true
         }
