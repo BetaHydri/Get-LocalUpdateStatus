@@ -1,7 +1,7 @@
 <#
 PSScriptInfo
 
-.VERSION 1.8.3
+.VERSION 1.8.4
 
 .GUID 4b937790-b06b-427f-8c1f-565030ae0227
 
@@ -1076,7 +1076,7 @@ function Get-LocalUpdateStatus {
 💡 TIP: For detailed help with all parameters, use: Get-Help Get-LocalUpdateStatus -Full
 
 ================================================================================
-  Script Version 1.8.3 | Run as Administrator Required
+  Script Version 1.8.4 | Run as Administrator Required
 ================================================================================
 
 "@ | Write-Host -ForegroundColor Cyan
@@ -1128,18 +1128,30 @@ function Get-LocalUpdateStatus {
       
       Write-Host "Successfully loaded $($importedData.Count) updates from report" -ForegroundColor Green
       
-      # If download is requested, process downloads for imported data
-      if ($DownloadUpdates) {
-        Write-Host "`nDownload mode enabled for imported updates..." -ForegroundColor Yellow
+      # Handle download mode or air-gapped installation for imported data
+      if ($DownloadUpdates -or $InstallUpdates) {
+        # For air-gapped installation without download, check for existing files
+        if ($InstallUpdates -and -not $DownloadUpdates) {
+          Write-Host "`nAir-gapped installation mode for imported updates..." -ForegroundColor Cyan
+          Write-Host "Searching for pre-downloaded files matching imported updates..." -ForegroundColor Yellow
+        } else {
+          Write-Host "`nDownload mode enabled for imported updates..." -ForegroundColor Yellow
+        }
         
-        # Create download directory
+        # Create download directory if it doesn't exist
         if (-not (Test-Path $DownloadPath)) {
-          try {
-            New-Item -Path $DownloadPath -ItemType Directory -Force | Out-Null
-            Write-Host "Created download directory: $DownloadPath" -ForegroundColor Green
-          }
-          catch {
-            Write-Error "Failed to create download directory: $DownloadPath. Error: $($_.Exception.Message)"
+          if ($DownloadUpdates) {
+            try {
+              New-Item -Path $DownloadPath -ItemType Directory -Force | Out-Null
+              Write-Host "Created download directory: $DownloadPath" -ForegroundColor Green
+            }
+            catch {
+              Write-Error "Failed to create download directory: $DownloadPath. Error: $($_.Exception.Message)"
+              return
+            }
+          } else {
+            Write-Error "Air-gapped installation requires the DownloadPath '$DownloadPath' to exist with update files."
+            Write-Host "Create directory '$DownloadPath' and copy your pre-downloaded updates there." -ForegroundColor Yellow
             return
           }
         }
@@ -1147,7 +1159,43 @@ function Get-LocalUpdateStatus {
         # Prepare imported updates for batch processing
         $MyUpdates = @()
         foreach ($update in $importedData) {
-          if ($update.DownloadURL) {
+          # For air-gapped mode (InstallUpdates without DownloadUpdates), match with existing files
+          if ($InstallUpdates -and -not $DownloadUpdates) {
+            # Air-gapped mode: look for matching files in download directory
+            $matchedFile = $null
+            $existingFiles = Get-ChildItem -Path $DownloadPath -Include "*.cab", "*.msu", "*.msi", "*.msp", "*.exe" -Recurse -ErrorAction SilentlyContinue
+            
+            # Try to match by KB ID in filename
+            $kbPattern = "*$($update.KbId)*"
+            $matchedFile = $existingFiles | Where-Object { $_.Name -like $kbPattern } | Select-Object -First 1
+            
+            # If no KB match, try to match by title keywords (for complex packages)
+            if (-not $matchedFile -and $update.Title) {
+              $titleWords = ($update.Title -split '\s+' | Where-Object { $_.Length -gt 3 -and $_ -notmatch '^\d+$' }) | Select-Object -First 3
+              foreach ($word in $titleWords) {
+                $matchedFile = $existingFiles | Where-Object { $_.Name -like "*$word*" } | Select-Object -First 1
+                if ($matchedFile) { break }
+              }
+            }
+            
+            if ($matchedFile) {
+              Write-Host "  ✓ Matched KB$($update.KbId) with file: $($matchedFile.Name)" -ForegroundColor Green
+              # Add the matched file info to the update object
+              $update | Add-Member -MemberType NoteProperty -Name NeedsDownload -Value $false -Force
+              $update | Add-Member -MemberType NoteProperty -Name DownloadSuccess -Value $true -Force
+              $update | Add-Member -MemberType NoteProperty -Name DownloadedFilePath -Value $matchedFile.FullName -Force
+              $update | Add-Member -MemberType NoteProperty -Name DownloadedFileSize -Value $matchedFile.Length -Force
+              $update | Add-Member -MemberType NoteProperty -Name DownloadReason -Value "Air-gapped file match" -Force
+            } else {
+              Write-Host "  ✗ No match found for KB$($update.KbId): $($update.Title)" -ForegroundColor Yellow
+              # No matching file found
+              $update | Add-Member -MemberType NoteProperty -Name DownloadSuccess -Value $false -Force
+              $update | Add-Member -MemberType NoteProperty -Name DownloadNote -Value "No matching file found in download path" -Force
+              $update | Add-Member -MemberType NoteProperty -Name NeedsDownload -Value $false -Force
+            }
+          }
+          # For download mode, use existing logic
+          elseif ($update.DownloadURL) {
             # Check if file already exists in download directory
             $fileName = [System.IO.Path]::GetFileName($update.DownloadURL)
             $fullPath = Join-Path $DownloadPath $fileName
@@ -1219,75 +1267,24 @@ function Get-LocalUpdateStatus {
           Write-Host ("=" * 60) -ForegroundColor Green
         }
         else {
-          Write-Host "`nNo updates available for download (all updates either have no URL or already downloaded)" -ForegroundColor Yellow
+          if ($InstallUpdates -and -not $DownloadUpdates) {
+            Write-Host "`nAir-gapped mode: No downloads needed - using pre-downloaded files for installation" -ForegroundColor Green
+          } else {
+            Write-Host "`nNo updates available for download (all updates either have no URL or already downloaded)" -ForegroundColor Yellow
+          }
         }
 
         # PHASE 2: BATCH INSTALLATION PROCESSING (IMPORT MODE)
         if ($InstallUpdates) {
-          # For air-gapped environments, match imported updates with existing files
-          $updatesToInstall = @()
-          
-          # First, try to match updates with downloaded files
-          $downloadSuccessUpdates = $MyUpdates | Where-Object { $_.DownloadSuccess -eq $true -and $_.DownloadedFilePath }
-          if ($downloadSuccessUpdates) {
-            $updatesToInstall += $downloadSuccessUpdates
-          }
-          
-          # Then, for air-gapped scenarios, match remaining imported updates with existing files in download path
-          $remainingUpdates = $MyUpdates | Where-Object { $_.DownloadSuccess -ne $true -or -not $_.DownloadedFilePath }
-          if ($remainingUpdates -and (Test-Path $DownloadPath)) {
-            Write-Host "`nAir-gapped mode: Searching for matching update files in '$DownloadPath'..." -ForegroundColor Cyan
-            
-            # Get all potential update files in the directory
-            $existingFiles = Get-ChildItem -Path $DownloadPath -Include "*.cab", "*.msu", "*.msi", "*.msp", "*.exe" -Recurse -ErrorAction SilentlyContinue
-            
-            foreach ($update in $remainingUpdates) {
-              $matchedFile = $null
-              
-              # Try to match by KB ID in filename
-              $kbPattern = "*$($update.KbId)*"
-              $matchedFile = $existingFiles | Where-Object { $_.Name -like $kbPattern } | Select-Object -First 1
-              
-              # If no KB match, try to match by title keywords (for complex packages)
-              if (-not $matchedFile -and $update.Title) {
-                $titleWords = ($update.Title -split '\s+' | Where-Object { $_.Length -gt 3 -and $_ -notmatch '^\d+$' }) | Select-Object -First 3
-                foreach ($word in $titleWords) {
-                  $matchedFile = $existingFiles | Where-Object { $_.Name -like "*$word*" } | Select-Object -First 1
-                  if ($matchedFile) { break }
-                }
-              }
-              
-              if ($matchedFile) {
-                Write-Host "  Matched KB$($update.KbId) with file: $($matchedFile.Name)" -ForegroundColor Green
-                
-                # Add the matched file info to the update object
-                $update | Add-Member -MemberType NoteProperty -Name DownloadSuccess -Value $true -Force
-                $update | Add-Member -MemberType NoteProperty -Name DownloadedFilePath -Value $matchedFile.FullName -Force
-                $update | Add-Member -MemberType NoteProperty -Name DownloadedFileSize -Value $matchedFile.Length -Force
-                $update | Add-Member -MemberType NoteProperty -Name DownloadReason -Value "Air-gapped file match" -Force
-                
-                $updatesToInstall += $update
-                
-                # Remove from available files to prevent double-matching
-                $existingFiles = $existingFiles | Where-Object { $_.FullName -ne $matchedFile.FullName }
-              }
-              else {
-                Write-Host "  No matching file found for KB$($update.KbId): $($update.Title)" -ForegroundColor Yellow
-              }
-            }
-            
-            # Report any unmatched files (security awareness)
-            if ($existingFiles.Count -gt 0) {
-              Write-Host "`nWarning: Found $($existingFiles.Count) update files that don't match imported updates:" -ForegroundColor Yellow
-              foreach ($unmatchedFile in $existingFiles) {
-                Write-Host "  - $($unmatchedFile.Name) (not in XML - will be ignored)" -ForegroundColor Gray
-              }
-              Write-Host "Only updates from the imported XML will be installed for security." -ForegroundColor Cyan
-            }
-          }
+          # Get all updates that are ready for installation (either downloaded or matched in air-gapped mode)
+          $updatesToInstall = $MyUpdates | Where-Object { $_.DownloadSuccess -eq $true -and $_.DownloadedFilePath }
           
           if ($updatesToInstall -and $updatesToInstall.Count -gt 0) {
-            Write-Host "`nProceeding with batch installation of $($updatesToInstall.Count) matched updates..." -ForegroundColor Cyan
+            if ($InstallUpdates -and -not $DownloadUpdates) {
+              Write-Host "`nProceeding with air-gapped installation of $($updatesToInstall.Count) matched updates..." -ForegroundColor Cyan
+            } else {
+              Write-Host "`nProceeding with batch installation of $($updatesToInstall.Count) updates..." -ForegroundColor Cyan
+            }
             
             # Ask for confirmation before installing
             Write-Host "`nWARNING: About to install $($updatesToInstall.Count) Windows Update(s)" -ForegroundColor Yellow
@@ -1319,7 +1316,11 @@ function Get-LocalUpdateStatus {
             }
           }
           else {
-            Write-Host "`nNo updates available for installation (no successfully downloaded updates found)" -ForegroundColor Yellow
+            if ($InstallUpdates -and -not $DownloadUpdates) {
+              Write-Host "`nNo updates available for installation (no matching files found in download path)" -ForegroundColor Yellow
+            } else {
+              Write-Host "`nNo updates available for installation (no successfully downloaded updates found)" -ForegroundColor Yellow
+            }
           }
         }
 
@@ -1367,11 +1368,13 @@ function Get-LocalUpdateStatus {
         
         Write-Host "Download location: $DownloadPath" -ForegroundColor White
         Write-Host ("=" * 60) -ForegroundColor Cyan
+        }
         
         return $MyUpdates
       }
+      }
       else {
-        # Just return the imported data without downloading
+        # Just return the imported data without downloading or installation
         return $importedData
       }
     }
