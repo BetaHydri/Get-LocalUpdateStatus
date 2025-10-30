@@ -1,7 +1,7 @@
 <#
 PSScriptInfo
 
-.VERSION 1.8.4
+.VERSION 1.8.0
 
 .GUID 4b937790-b06b-427f-8c1f-565030ae0227
 
@@ -11,7 +11,7 @@ PSScriptInfo
 
 .COPYRIGHT 2025
 
-.TAGS Updates, WindowsUpdates, Download, Export, Import, WSUS, Offline, BatchInstall, AirGapped, Security
+.TAGS Updates, WindowsUpdates, Download, Export, Import, WSUS, Offline, BatchInstall
 
 .DESCRIPTION 
 Enumerates missing or installed Windows Updates on the local computer and returns an array of objects with update details. 
@@ -20,73 +20,6 @@ Supports exporting scan results and importing them on other machines for downloa
 Supports WSUS offline scanning using wsusscn2.cab for air-gapped environments.
 Includes interactive installation confirmation and detailed batch processing summaries.
 This function operates on the local computer only - run directly on each machine to be scanned.
-
-.PARAMETER UpdateSearchFilter
-Specifies the search criteria for Windows Update. Default: 'IsHidden=0 and IsInstalled=0'
-Common values:
-- 'IsHidden=0 and IsInstalled=0' : Show available updates (default)
-- 'IsInstalled=1' : Show installed updates
-- 'IsInstalled=0' : Show missing updates
-
-.PARAMETER DownloadUpdates  
-Downloads updates to the specified path. Not required for air-gapped installations with pre-downloaded files.
-
-.PARAMETER InstallUpdates
-Installs updates from the download path. Can be used without -DownloadUpdates for air-gapped scenarios.
-
-.PARAMETER DownloadPath
-Directory where updates are downloaded or where pre-downloaded updates are located.
-Default: $env:TEMP\WindowsUpdates
-
-.EXAMPLE
-# Basic scan for missing updates
-Get-LocalUpdateStatus -UpdateSearchFilter 'IsHidden=0 and IsInstalled=0'
-
-.EXAMPLE  
-# Download and install updates (internet-connected environment)
-Get-LocalUpdateStatus -UpdateSearchFilter 'IsHidden=0 and IsInstalled=0' -DownloadUpdates -InstallUpdates
-
-.EXAMPLE
-# Air-gapped installation from pre-downloaded updates
-# First: Copy your .cab/.msu/.msi/.msp/.exe files to C:\Updates
-# Then run:
-Get-LocalUpdateStatus -UpdateSearchFilter 'IsHidden=0 and IsInstalled=0' -InstallUpdates -DownloadPath 'C:\Updates'
-
-.EXAMPLE
-# Air-gapped workflow with import/export (RECOMMENDED for precision)
-# Step 1 (on target machine): Export scan results
-Get-LocalUpdateStatus -UpdateSearchFilter 'IsHidden=0 and IsInstalled=0' -ExportReport 'C:\UpdateScan.xml'
-# Step 2 (on internet machine): Download updates using exported scan
-Get-LocalUpdateStatus -ImportReport 'C:\UpdateScan.xml' -DownloadUpdates -DownloadPath 'C:\Updates'
-# Step 3 (on target machine): Install only the updates from the XML
-Get-LocalUpdateStatus -ImportReport 'C:\UpdateScan.xml' -InstallUpdates -DownloadPath 'C:\Updates'
-
-.EXAMPLE
-# Air-gapped SCOM agent patch installation
-# Copy kb4580254-amd64-agent_b53cd0d05249917d69f5872cd002e194c8fdf486.cab to C:\SCOMPatches
-Get-LocalUpdateStatus -UpdateSearchFilter 'IsHidden=0 and IsInstalled=0' -InstallUpdates -DownloadPath 'C:\SCOMPatches'
-
-.EXAMPLE
-# Export scan results for download on another machine
-Get-LocalUpdateStatus -UpdateSearchFilter 'IsHidden=0 and IsInstalled=0' -ExportReport 'C:\UpdateScan.xml'
-
-.EXAMPLE
-# Import and download updates from exported scan
-Get-LocalUpdateStatus -ImportReport 'C:\UpdateScan.xml' -DownloadUpdates -DownloadPath 'C:\Updates'
-
-.NOTES
-Air-gapped Environment Workflow:
-1. On internet-connected machine: Export scan results or download updates
-2. Copy updates to air-gapped machine
-3. On air-gapped machine: Use -InstallUpdates with -DownloadPath (no -DownloadUpdates needed)
-
-Air-gapped Security Features:
-- With -ImportReport: Only installs updates that match the imported XML (precise control)
-- Without -ImportReport: Installs any compatible update files in the directory
-- File matching: By KB ID in filename, then by title keywords for complex packages
-- Security warning: Reports unmatched files that will be ignored
-
-Supported file types: .cab (DISM), .msu (WUSA), .msi/.msp (msiexec), .exe (silent)
 #>
 
 # Helper function to install updates (.cab via DISM, .msu via WUSA, .exe via silent execution)
@@ -411,7 +344,7 @@ function Invoke-UpdateInstallation {
             }
               
             Remove-Item -Path $tempDir -Recurse -Force -ErrorAction SilentlyContinue
-            
+              
             if ($installationSuccess) {
               return $true
             }
@@ -420,206 +353,211 @@ function Invoke-UpdateInstallation {
               return $false
             }
           }
-          catch {
-            Write-Host "  Alternative installation failed with error: $($_.Exception.Message)" -ForegroundColor Red
-            return $false
-          }
-        }
-        elseif ($process.ExitCode -eq 50) {
-          Write-Host "  Installation skipped: Package not applicable to this system - $fileName" -ForegroundColor Yellow
-          return $true
-        }
-        elseif ($process.ExitCode -eq 87) {
-          Write-Host "  Installation failed: Invalid parameter - $fileName (Exit code: 87)" -ForegroundColor Red
+            
+          Remove-Item -Path $tempDir -Recurse -Force -ErrorAction SilentlyContinue
+          Write-Host "  Alternative installation methods failed: $fileName" -ForegroundColor Red
           return $false
         }
-        elseif ($process.ExitCode -eq 1460) {
-          Write-Host "  Installation failed: Package already installed - $fileName" -ForegroundColor Yellow
-          return $true
-        }
-        else {
-          Write-Host "  Installation failed: $fileName (Exit code: $($process.ExitCode))" -ForegroundColor Red
+        catch {
+          Write-Host "  Alternative installation failed with error: $($_.Exception.Message)" -ForegroundColor Red
           return $false
         }
       }
-      
-      '.msu' {
-        # Use WUSA for .msu files
-        Write-Host "  Using WUSA for .msu installation..." -ForegroundColor Gray
-        $wusaArgs = @(
-          "$FilePath"
-          '/quiet'
-          '/norestart'
-        )
-        
-        $process = Start-Process -FilePath 'wusa.exe' -ArgumentList $wusaArgs -Wait -PassThru -NoNewWindow
-        
-        if ($process.ExitCode -eq 0) {
-          Write-Host "  Installation successful: $fileName" -ForegroundColor Green
-          return $true
-        }
-        elseif ($process.ExitCode -eq 3010) {
-          Write-Host "  Installation successful (restart required): $fileName" -ForegroundColor Yellow
-          return $true
-        }
-        elseif ($process.ExitCode -eq -2145124329) {
-          Write-Host "  Installation skipped: Update already installed - $fileName" -ForegroundColor Yellow
-          return $true
-        }
-        else {
-          Write-Host "  Installation failed: $fileName (Exit code: $($process.ExitCode))" -ForegroundColor Red
-          return $false
-        }
+      elseif ($process.ExitCode -eq 50) {
+        Write-Host "  Installation skipped: Package not applicable to this system - $fileName" -ForegroundColor Yellow
+        return $true
       }
-      
-      '.exe' {
-        # Use direct execution for .exe files with silent installation switches
-        Write-Host "  Using silent execution for .exe installation..." -ForegroundColor Gray
-        
-        # Common silent switches for Microsoft executable updates
-        $exeArgs = @()
-        
-        # Try to determine appropriate silent switches based on filename/title
-        if ($fileName -match "malicious|removal|tool|msrt" -or $Title -match "Malicious Software Removal Tool") {
-          # Windows Malicious Software Removal Tool uses /Q
-          $exeArgs = @('/Q')
-          Write-Host "  Detected Malicious Software Removal Tool - using /Q switch" -ForegroundColor Gray
-        }
-        elseif ($fileName -match "defender|antimalware" -or $Title -match "Defender|Antimalware") {
-          # Windows Defender updates often use /q
-          $exeArgs = @('/q')
-          Write-Host "  Detected Defender/Antimalware update - using /q switch" -ForegroundColor Gray
-        }
-        else {
-          # Generic Microsoft executable updates - try common silent switches
-          $exeArgs = @('/quiet')
-          Write-Host "  Using generic silent switch: /quiet" -ForegroundColor Gray
-        }
-        
-        $process = Start-Process -FilePath $FilePath -ArgumentList $exeArgs -Wait -PassThru -NoNewWindow
-        
-        if ($process.ExitCode -eq 0) {
-          Write-Host "  Installation successful: $fileName" -ForegroundColor Green
-          return $true
-        }
-        elseif ($process.ExitCode -eq 3010) {
-          Write-Host "  Installation successful (restart required): $fileName" -ForegroundColor Yellow
-          return $true
-        }
-        elseif ($process.ExitCode -eq 1) {
-          Write-Host "  Installation completed with warnings: $fileName" -ForegroundColor Yellow
-          return $true
-        }
-        else {
-          Write-Host "  Installation failed: $fileName (Exit code: $($process.ExitCode))" -ForegroundColor Red
-          Write-Host "  Note: Some .exe files may require specific switches or manual installation" -ForegroundColor Gray
-          return $false
-        }
+      elseif ($process.ExitCode -eq 87) {
+        Write-Host "  Installation failed: Invalid parameter - $fileName (Exit code: 87)" -ForegroundColor Red
+        return $false
       }
-      
-      '.msi' {
-        # Use msiexec for .msi files
-        Write-Host "  Using msiexec for .msi installation..." -ForegroundColor Gray
-        $msiArgs = @(
-          '/i'
-          $FilePath
-          '/quiet'
-          '/norestart'
-          'REBOOT=ReallySuppress'
-        )
-        
-        $process = Start-Process -FilePath 'msiexec.exe' -ArgumentList $msiArgs -Wait -PassThru -NoNewWindow
-        
-        if ($process.ExitCode -eq 0) {
-          Write-Host "  Installation successful: $fileName" -ForegroundColor Green
-          return $true
-        }
-        elseif ($process.ExitCode -eq 3010) {
-          Write-Host "  Installation successful (restart required): $fileName" -ForegroundColor Yellow
-          return $true
-        }
-        elseif ($process.ExitCode -eq 1638) {
-          Write-Host "  Installation skipped: Product already installed - $fileName" -ForegroundColor Yellow
-          return $true
-        }
-        elseif ($process.ExitCode -eq 1605) {
-          Write-Host "  Installation failed: This action is only valid for products that are currently installed - $fileName" -ForegroundColor Red
-          return $false
-        }
-        elseif ($process.ExitCode -eq 1619) {
-          Write-Host "  Installation failed: Package could not be opened - $fileName" -ForegroundColor Red
-          return $false
-        }
-        elseif ($process.ExitCode -eq 1633) {
-          Write-Host "  Installation failed: Platform not supported - $fileName" -ForegroundColor Red
-          return $false
-        }
-        else {
-          Write-Host "  Installation failed: $fileName (Exit code: $($process.ExitCode))" -ForegroundColor Red
-          Write-Host "  Note: MSI error codes can indicate specific installation issues" -ForegroundColor Gray
-          return $false
-        }
+      elseif ($process.ExitCode -eq 1460) {
+        Write-Host "  Installation failed: Package already installed - $fileName" -ForegroundColor Yellow
+        return $true
       }
-      
-      '.msp' {
-        # Use msiexec for .msp files (Microsoft Patch files)
-        Write-Host "  Using msiexec for .msp patch installation..." -ForegroundColor Gray
-        $mspArgs = @(
-          '/p'
-          $FilePath
-          '/quiet'
-          '/norestart'
-          'REBOOT=ReallySuppress'
-        )
-        
-        $process = Start-Process -FilePath 'msiexec.exe' -ArgumentList $mspArgs -Wait -PassThru -NoNewWindow
-        
-        if ($process.ExitCode -eq 0) {
-          Write-Host "  Installation successful: $fileName" -ForegroundColor Green
-          return $true
-        }
-        elseif ($process.ExitCode -eq 3010) {
-          Write-Host "  Installation successful (restart required): $fileName" -ForegroundColor Yellow
-          return $true
-        }
-        elseif ($process.ExitCode -eq 1638) {
-          Write-Host "  Installation skipped: Patch already applied - $fileName" -ForegroundColor Yellow
-          return $true
-        }
-        elseif ($process.ExitCode -eq 1605) {
-          Write-Host "  Installation failed: No products found to patch - $fileName" -ForegroundColor Red
-          return $false
-        }
-        elseif ($process.ExitCode -eq 1619) {
-          Write-Host "  Installation failed: Package could not be opened - $fileName" -ForegroundColor Red
-          return $false
-        }
-        elseif ($process.ExitCode -eq 1633) {
-          Write-Host "  Installation failed: Platform not supported - $fileName" -ForegroundColor Red
-          return $false
-        }
-        elseif ($process.ExitCode -eq 1636) {
-          Write-Host "  Installation failed: Patch package cannot be opened - $fileName" -ForegroundColor Red
-          return $false
-        }
-        else {
-          Write-Host "  Installation failed: $fileName (Exit code: $($process.ExitCode))" -ForegroundColor Red
-          Write-Host "  Note: MSP error codes indicate patch-specific installation issues" -ForegroundColor Gray
-          return $false
-        }
-      }
-      
-      default {
-        Write-Host "  Installation failed: Unsupported file type '$fileExtension' for $fileName" -ForegroundColor Red
-        Write-Host "  Supported types: .cab (DISM), .msu (WUSA), .msi (msiexec), .msp (msiexec), .exe (Silent)" -ForegroundColor Gray
+      else {
+        Write-Host "  Installation failed: $fileName (Exit code: $($process.ExitCode))" -ForegroundColor Red
         return $false
       }
     }
+      
+    '.msu' {
+      # Use WUSA for .msu files
+      Write-Host "  Using WUSA for .msu installation..." -ForegroundColor Gray
+      $wusaArgs = @(
+        "$FilePath"
+        '/quiet'
+        '/norestart'
+      )
+        
+      $process = Start-Process -FilePath 'wusa.exe' -ArgumentList $wusaArgs -Wait -PassThru -NoNewWindow
+        
+      if ($process.ExitCode -eq 0) {
+        Write-Host "  Installation successful: $fileName" -ForegroundColor Green
+        return $true
+      }
+      elseif ($process.ExitCode -eq 3010) {
+        Write-Host "  Installation successful (restart required): $fileName" -ForegroundColor Yellow
+        return $true
+      }
+      elseif ($process.ExitCode -eq -2145124329) {
+        Write-Host "  Installation skipped: Update already installed - $fileName" -ForegroundColor Yellow
+        return $true
+      }
+      else {
+        Write-Host "  Installation failed: $fileName (Exit code: $($process.ExitCode))" -ForegroundColor Red
+        return $false
+      }
+    }
+      
+    '.exe' {
+      # Use direct execution for .exe files with silent installation switches
+      Write-Host "  Using silent execution for .exe installation..." -ForegroundColor Gray
+        
+      # Common silent switches for Microsoft executable updates
+      $exeArgs = @()
+        
+      # Try to determine appropriate silent switches based on filename/title
+      if ($fileName -match "malicious|removal|tool|msrt" -or $Title -match "Malicious Software Removal Tool") {
+        # Windows Malicious Software Removal Tool uses /Q
+        $exeArgs = @('/Q')
+        Write-Host "  Detected Malicious Software Removal Tool - using /Q switch" -ForegroundColor Gray
+      }
+      elseif ($fileName -match "defender|antimalware" -or $Title -match "Defender|Antimalware") {
+        # Windows Defender updates often use /q
+        $exeArgs = @('/q')
+        Write-Host "  Detected Defender/Antimalware update - using /q switch" -ForegroundColor Gray
+      }
+      else {
+        # Generic Microsoft executable updates - try common silent switches
+        $exeArgs = @('/quiet')
+        Write-Host "  Using generic silent switch: /quiet" -ForegroundColor Gray
+      }
+        
+      $process = Start-Process -FilePath $FilePath -ArgumentList $exeArgs -Wait -PassThru -NoNewWindow
+        
+      if ($process.ExitCode -eq 0) {
+        Write-Host "  Installation successful: $fileName" -ForegroundColor Green
+        return $true
+      }
+      elseif ($process.ExitCode -eq 3010) {
+        Write-Host "  Installation successful (restart required): $fileName" -ForegroundColor Yellow
+        return $true
+      }
+      elseif ($process.ExitCode -eq 1) {
+        Write-Host "  Installation completed with warnings: $fileName" -ForegroundColor Yellow
+        return $true
+      }
+      else {
+        Write-Host "  Installation failed: $fileName (Exit code: $($process.ExitCode))" -ForegroundColor Red
+        Write-Host "  Note: Some .exe files may require specific switches or manual installation" -ForegroundColor Gray
+        return $false
+      }
+    }
+      
+    '.msi' {
+      # Use msiexec for .msi files
+      Write-Host "  Using msiexec for .msi installation..." -ForegroundColor Gray
+      $msiArgs = @(
+        '/i'
+        $FilePath
+        '/quiet'
+        '/norestart'
+        'REBOOT=ReallySuppress'
+      )
+        
+      $process = Start-Process -FilePath 'msiexec.exe' -ArgumentList $msiArgs -Wait -PassThru -NoNewWindow
+        
+      if ($process.ExitCode -eq 0) {
+        Write-Host "  Installation successful: $fileName" -ForegroundColor Green
+        return $true
+      }
+      elseif ($process.ExitCode -eq 3010) {
+        Write-Host "  Installation successful (restart required): $fileName" -ForegroundColor Yellow
+        return $true
+      }
+      elseif ($process.ExitCode -eq 1638) {
+        Write-Host "  Installation skipped: Product already installed - $fileName" -ForegroundColor Yellow
+        return $true
+      }
+      elseif ($process.ExitCode -eq 1605) {
+        Write-Host "  Installation failed: This action is only valid for products that are currently installed - $fileName" -ForegroundColor Red
+        return $false
+      }
+      elseif ($process.ExitCode -eq 1619) {
+        Write-Host "  Installation failed: Package could not be opened - $fileName" -ForegroundColor Red
+        return $false
+      }
+      elseif ($process.ExitCode -eq 1633) {
+        Write-Host "  Installation failed: Platform not supported - $fileName" -ForegroundColor Red
+        return $false
+      }
+      else {
+        Write-Host "  Installation failed: $fileName (Exit code: $($process.ExitCode))" -ForegroundColor Red
+        Write-Host "  Note: MSI error codes can indicate specific installation issues" -ForegroundColor Gray
+        return $false
+      }
+    }
+      
+    '.msp' {
+      # Use msiexec for .msp files (Microsoft Patch files)
+      Write-Host "  Using msiexec for .msp patch installation..." -ForegroundColor Gray
+      $mspArgs = @(
+        '/p'
+        $FilePath
+        '/quiet'
+        '/norestart'
+        'REBOOT=ReallySuppress'
+      )
+        
+      $process = Start-Process -FilePath 'msiexec.exe' -ArgumentList $mspArgs -Wait -PassThru -NoNewWindow
+        
+      if ($process.ExitCode -eq 0) {
+        Write-Host "  Installation successful: $fileName" -ForegroundColor Green
+        return $true
+      }
+      elseif ($process.ExitCode -eq 3010) {
+        Write-Host "  Installation successful (restart required): $fileName" -ForegroundColor Yellow
+        return $true
+      }
+      elseif ($process.ExitCode -eq 1638) {
+        Write-Host "  Installation skipped: Patch already applied - $fileName" -ForegroundColor Yellow
+        return $true
+      }
+      elseif ($process.ExitCode -eq 1605) {
+        Write-Host "  Installation failed: No products found to patch - $fileName" -ForegroundColor Red
+        return $false
+      }
+      elseif ($process.ExitCode -eq 1619) {
+        Write-Host "  Installation failed: Package could not be opened - $fileName" -ForegroundColor Red
+        return $false
+      }
+      elseif ($process.ExitCode -eq 1633) {
+        Write-Host "  Installation failed: Platform not supported - $fileName" -ForegroundColor Red
+        return $false
+      }
+      elseif ($process.ExitCode -eq 1636) {
+        Write-Host "  Installation failed: Patch package cannot be opened - $fileName" -ForegroundColor Red
+        return $false
+      }
+      else {
+        Write-Host "  Installation failed: $fileName (Exit code: $($process.ExitCode))" -ForegroundColor Red
+        Write-Host "  Note: MSP error codes indicate patch-specific installation issues" -ForegroundColor Gray
+        return $false
+      }
+    }
+      
+    default {
+      Write-Host "  Installation failed: Unsupported file type '$fileExtension' for $fileName" -ForegroundColor Red
+      Write-Host "  Supported types: .cab (DISM), .msu (WUSA), .msi (msiexec), .msp (msiexec), .exe (Silent)" -ForegroundColor Gray
+      return $false
+    }
   }
-  catch {
-    Write-Host "  Installation failed: $($_.Exception.Message)" -ForegroundColor Red
-    return $false
-  }
+}
+catch {
+  Write-Host "  Installation failed: $($_.Exception.Message)" -ForegroundColor Red
+  return $false
+}
 }
 
 # Helper function to download updates with enhanced progress
@@ -995,93 +933,8 @@ function Get-LocalUpdateStatus {
         }
         return $true
       })]
-    [System.String]$WSUSScanFile = "$env:TEMP",
-
-    [Parameter(Mandatory = $true, ParameterSetName = 'QuickHelp')]
-    [Switch]$QuickHelp
+    [System.String]$WSUSScanFile = "$env:TEMP"
   )
-
-  # Handle QuickHelp mode
-  if ($PSCmdlet.ParameterSetName -eq 'QuickHelp') {
-    @"
-
-================================================================================
-  GET-LOCALUPDATESTATUS - QUICK HELP & EXAMPLES
-================================================================================
-
-📋 MOST COMMON OPERATIONS:
-
-1. Scan for missing updates
-   Get-LocalUpdateStatus -UpdateSearchFilter 'IsInstalled=0'
-
-2. Download missing updates  
-   Get-LocalUpdateStatus -UpdateSearchFilter 'IsInstalled=0' -DownloadUpdates
-
-3. Download and install updates
-   Get-LocalUpdateStatus -UpdateSearchFilter 'IsInstalled=0' -DownloadUpdates -InstallUpdates
-
-🌐 AIR-GAPPED ENVIRONMENTS:
-
-1. Install from pre-downloaded files (any compatible files)
-   Get-LocalUpdateStatus -UpdateSearchFilter 'IsInstalled=0' -InstallUpdates -DownloadPath 'C:\Updates'
-
-2. Secure air-gapped workflow (RECOMMENDED)
-   # Step 1 (target machine): Export scan
-   Get-LocalUpdateStatus -UpdateSearchFilter 'IsInstalled=0' -ExportReport 'scan.xml'
-   # Step 2 (internet machine): Download updates  
-   Get-LocalUpdateStatus -ImportReport 'scan.xml' -DownloadUpdates -DownloadPath 'C:\Updates'
-   # Step 3 (target machine): Install only matched updates
-   Get-LocalUpdateStatus -ImportReport 'scan.xml' -InstallUpdates -DownloadPath 'C:\Updates'
-
-🔍 WSUS OFFLINE SCANNING:
-
-1. Download and use latest wsusscn2.cab
-   Get-LocalUpdateStatus -WSUSOfflineScan -UpdateSearchFilter 'IsInstalled=0'
-
-2. Use existing wsusscn2.cab (completely offline)
-   Get-LocalUpdateStatus -WSUSOfflineScan -WSUSScanFile 'C:\wsusscn2.cab' -UpdateSearchFilter 'IsInstalled=0'
-
-📊 COMMON FILTERS:
-   'IsInstalled=0'           - Missing updates
-   'IsInstalled=1'           - Installed updates  
-   'IsHidden=0'              - Visible updates
-   'IsHidden=1'              - Hidden updates
-   'IsHidden=0 and IsInstalled=0' - Visible missing updates
-   'IsHidden=0 and IsInstalled=1' - Visible installed updates
-
-📁 SUPPORTED FILE TYPES:
-   .cab files  - DISM installation with automatic extraction fallback
-   .msu files  - WUSA installation
-   .msi files  - msiexec installation
-   .msp files  - msiexec patch installation
-   .exe files  - Silent installation with smart switches
-
-🚀 QUICK START EXAMPLES:
-
-• Check what updates are missing:
-  Get-LocalUpdateStatus 'IsInstalled=0'
-
-• Download updates to default location:
-  Get-LocalUpdateStatus 'IsInstalled=0' -DownloadUpdates
-
-• Install from pre-downloaded directory:
-  Get-LocalUpdateStatus 'IsInstalled=0' -InstallUpdates -DownloadPath 'C:\MyUpdates'
-
-• Export scan for air-gapped transfer:
-  Get-LocalUpdateStatus 'IsInstalled=0' -ExportReport 'updates'
-
-• WSUS offline scan:
-  Get-LocalUpdateStatus -WSUSOfflineScan 'IsInstalled=0'
-
-💡 TIP: For detailed help with all parameters, use: Get-Help Get-LocalUpdateStatus -Full
-
-================================================================================
-  Script Version 1.8.4 | Run as Administrator Required
-================================================================================
-
-"@ | Write-Host -ForegroundColor Cyan
-    return
-  }
 
   # Check for admin privileges
   if (-not ([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole] "Administrator")) {
@@ -1090,27 +943,10 @@ function Get-LocalUpdateStatus {
     break
   }
 
-  # Validate parameter combinations for air-gapped environments
+  # Validate parameter combinations
   if ($InstallUpdates -and -not $DownloadUpdates) {
-    # Check if DownloadPath contains existing update files (air-gapped scenario)
-    if (Test-Path $DownloadPath) {
-      $existingUpdates = Get-ChildItem -Path $DownloadPath -Include "*.cab", "*.msu", "*.msi", "*.msp", "*.exe" -Recurse -ErrorAction SilentlyContinue
-      if ($existingUpdates.Count -gt 0) {
-        Write-Host "`nAir-gapped mode detected: Found $($existingUpdates.Count) existing update files in '$DownloadPath'" -ForegroundColor Cyan
-        Write-Host "Proceeding with installation from pre-downloaded files..." -ForegroundColor Green
-        $DownloadUpdates = $false  # Explicitly disable downloading
-      }
-      else {
-        Write-Error "InstallUpdates without DownloadUpdates requires existing update files in '$DownloadPath'. No update files found (.cab, .msu, .msi, .msp, .exe)."
-        Write-Host "For air-gapped environments: Copy your pre-downloaded updates to '$DownloadPath' and run again." -ForegroundColor Yellow
-        return
-      }
-    }
-    else {
-      Write-Error "InstallUpdates without DownloadUpdates requires the DownloadPath '$DownloadPath' to exist with update files."
-      Write-Host "For air-gapped environments: Create directory '$DownloadPath' and copy your pre-downloaded updates there." -ForegroundColor Yellow
-      return
-    }
+    Write-Error "InstallUpdates requires DownloadUpdates to be enabled. Use both -DownloadUpdates and -InstallUpdates parameters."
+    return
   }
 
   # Handle import report mode
@@ -1128,30 +964,18 @@ function Get-LocalUpdateStatus {
       
       Write-Host "Successfully loaded $($importedData.Count) updates from report" -ForegroundColor Green
       
-      # Handle download mode or air-gapped installation for imported data
-      if ($DownloadUpdates -or $InstallUpdates) {
-        # For air-gapped installation without download, check for existing files
-        if ($InstallUpdates -and -not $DownloadUpdates) {
-          Write-Host "`nAir-gapped installation mode for imported updates..." -ForegroundColor Cyan
-          Write-Host "Searching for pre-downloaded files matching imported updates..." -ForegroundColor Yellow
-        } else {
-          Write-Host "`nDownload mode enabled for imported updates..." -ForegroundColor Yellow
-        }
+      # If download is requested, process downloads for imported data
+      if ($DownloadUpdates) {
+        Write-Host "`nDownload mode enabled for imported updates..." -ForegroundColor Yellow
         
-        # Create download directory if it doesn't exist
+        # Create download directory
         if (-not (Test-Path $DownloadPath)) {
-          if ($DownloadUpdates) {
-            try {
-              New-Item -Path $DownloadPath -ItemType Directory -Force | Out-Null
-              Write-Host "Created download directory: $DownloadPath" -ForegroundColor Green
-            }
-            catch {
-              Write-Error "Failed to create download directory: $DownloadPath. Error: $($_.Exception.Message)"
-              return
-            }
-          } else {
-            Write-Error "Air-gapped installation requires the DownloadPath '$DownloadPath' to exist with update files."
-            Write-Host "Create directory '$DownloadPath' and copy your pre-downloaded updates there." -ForegroundColor Yellow
+          try {
+            New-Item -Path $DownloadPath -ItemType Directory -Force | Out-Null
+            Write-Host "Created download directory: $DownloadPath" -ForegroundColor Green
+          }
+          catch {
+            Write-Error "Failed to create download directory: $DownloadPath. Error: $($_.Exception.Message)"
             return
           }
         }
@@ -1159,43 +983,7 @@ function Get-LocalUpdateStatus {
         # Prepare imported updates for batch processing
         $MyUpdates = @()
         foreach ($update in $importedData) {
-          # For air-gapped mode (InstallUpdates without DownloadUpdates), match with existing files
-          if ($InstallUpdates -and -not $DownloadUpdates) {
-            # Air-gapped mode: look for matching files in download directory
-            $matchedFile = $null
-            $existingFiles = Get-ChildItem -Path $DownloadPath -Include "*.cab", "*.msu", "*.msi", "*.msp", "*.exe" -Recurse -ErrorAction SilentlyContinue
-            
-            # Try to match by KB ID in filename
-            $kbPattern = "*$($update.KbId)*"
-            $matchedFile = $existingFiles | Where-Object { $_.Name -like $kbPattern } | Select-Object -First 1
-            
-            # If no KB match, try to match by title keywords (for complex packages)
-            if (-not $matchedFile -and $update.Title) {
-              $titleWords = ($update.Title -split '\s+' | Where-Object { $_.Length -gt 3 -and $_ -notmatch '^\d+$' }) | Select-Object -First 3
-              foreach ($word in $titleWords) {
-                $matchedFile = $existingFiles | Where-Object { $_.Name -like "*$word*" } | Select-Object -First 1
-                if ($matchedFile) { break }
-              }
-            }
-            
-            if ($matchedFile) {
-              Write-Host "  ✓ Matched KB$($update.KbId) with file: $($matchedFile.Name)" -ForegroundColor Green
-              # Add the matched file info to the update object
-              $update | Add-Member -MemberType NoteProperty -Name NeedsDownload -Value $false -Force
-              $update | Add-Member -MemberType NoteProperty -Name DownloadSuccess -Value $true -Force
-              $update | Add-Member -MemberType NoteProperty -Name DownloadedFilePath -Value $matchedFile.FullName -Force
-              $update | Add-Member -MemberType NoteProperty -Name DownloadedFileSize -Value $matchedFile.Length -Force
-              $update | Add-Member -MemberType NoteProperty -Name DownloadReason -Value "Air-gapped file match" -Force
-            } else {
-              Write-Host "  ✗ No match found for KB$($update.KbId): $($update.Title)" -ForegroundColor Yellow
-              # No matching file found
-              $update | Add-Member -MemberType NoteProperty -Name DownloadSuccess -Value $false -Force
-              $update | Add-Member -MemberType NoteProperty -Name DownloadNote -Value "No matching file found in download path" -Force
-              $update | Add-Member -MemberType NoteProperty -Name NeedsDownload -Value $false -Force
-            }
-          }
-          # For download mode, use existing logic
-          elseif ($update.DownloadURL) {
+          if ($update.DownloadURL) {
             # Check if file already exists in download directory
             $fileName = [System.IO.Path]::GetFileName($update.DownloadURL)
             $fullPath = Join-Path $DownloadPath $fileName
@@ -1267,24 +1055,15 @@ function Get-LocalUpdateStatus {
           Write-Host ("=" * 60) -ForegroundColor Green
         }
         else {
-          if ($InstallUpdates -and -not $DownloadUpdates) {
-            Write-Host "`nAir-gapped mode: No downloads needed - using pre-downloaded files for installation" -ForegroundColor Green
-          } else {
-            Write-Host "`nNo updates available for download (all updates either have no URL or already downloaded)" -ForegroundColor Yellow
-          }
+          Write-Host "`nNo updates available for download (all updates either have no URL or already downloaded)" -ForegroundColor Yellow
         }
 
         # PHASE 2: BATCH INSTALLATION PROCESSING (IMPORT MODE)
         if ($InstallUpdates) {
-          # Get all updates that are ready for installation (either downloaded or matched in air-gapped mode)
           $updatesToInstall = $MyUpdates | Where-Object { $_.DownloadSuccess -eq $true -and $_.DownloadedFilePath }
           
           if ($updatesToInstall -and $updatesToInstall.Count -gt 0) {
-            if ($InstallUpdates -and -not $DownloadUpdates) {
-              Write-Host "`nProceeding with air-gapped installation of $($updatesToInstall.Count) matched updates..." -ForegroundColor Cyan
-            } else {
-              Write-Host "`nProceeding with batch installation of $($updatesToInstall.Count) updates..." -ForegroundColor Cyan
-            }
+            Write-Host "`nProceeding with batch installation..." -ForegroundColor Cyan
             
             # Ask for confirmation before installing
             Write-Host "`nWARNING: About to install $($updatesToInstall.Count) Windows Update(s)" -ForegroundColor Yellow
@@ -1316,11 +1095,7 @@ function Get-LocalUpdateStatus {
             }
           }
           else {
-            if ($InstallUpdates -and -not $DownloadUpdates) {
-              Write-Host "`nNo updates available for installation (no matching files found in download path)" -ForegroundColor Yellow
-            } else {
-              Write-Host "`nNo updates available for installation (no successfully downloaded updates found)" -ForegroundColor Yellow
-            }
+            Write-Host "`nNo updates available for installation (no successfully downloaded updates found)" -ForegroundColor Yellow
           }
         }
 
@@ -1349,7 +1124,7 @@ function Get-LocalUpdateStatus {
         $updatesWithUrls = ($MyUpdates | Where-Object { $_.DownloadURL }).Count
         $successfulDownloads = ($MyUpdates | Where-Object { $_.DownloadSuccess -eq $true }).Count
         
-        $summaryTitle = if ($InstallUpdates) { "FINAL IMPORT, DOWNLOAD `& INSTALLATION SUMMARY" } else { "FINAL IMPORT `& DOWNLOAD SUMMARY" }
+        $summaryTitle = if ($InstallUpdates) { "FINAL IMPORT, DOWNLOAD & INSTALLATION SUMMARY" } else { "FINAL IMPORT & DOWNLOAD SUMMARY" }
         Write-Host ("`n" + "=" * 60) -ForegroundColor Cyan
         Write-Host $summaryTitle -ForegroundColor Cyan
         Write-Host ("=" * 60) -ForegroundColor Cyan
@@ -1368,13 +1143,11 @@ function Get-LocalUpdateStatus {
         
         Write-Host "Download location: $DownloadPath" -ForegroundColor White
         Write-Host ("=" * 60) -ForegroundColor Cyan
-        }
         
         return $MyUpdates
       }
-      }
       else {
-        # Just return the imported data without downloading or installation
+        # Just return the imported data without downloading
         return $importedData
       }
     }
@@ -1769,7 +1542,7 @@ function Get-LocalUpdateStatus {
       $criticalUpdates = ($MyUpdates | Where-Object { $_.SeverityText -eq 'Critical' }).Count
       $importantUpdates = ($MyUpdates | Where-Object { $_.SeverityText -eq 'Important' }).Count
       
-      $summaryTitle = if ($InstallUpdates) { "FINAL WSUS OFFLINE SCAN, DOWNLOAD `& INSTALLATION SUMMARY" } else { "FINAL WSUS OFFLINE SCAN SUMMARY" }
+      $summaryTitle = if ($InstallUpdates) { "FINAL WSUS OFFLINE SCAN, DOWNLOAD & INSTALLATION SUMMARY" } else { "FINAL WSUS OFFLINE SCAN SUMMARY" }
       Write-Host ("`n" + "=" * 60) -ForegroundColor Cyan
       Write-Host $summaryTitle -ForegroundColor Cyan
       Write-Host ("=" * 60) -ForegroundColor Cyan
@@ -2052,7 +1825,7 @@ function Get-LocalUpdateStatus {
     $updatesWithoutUrls = $totalUpdates - $updatesWithUrls
     $successfulDownloads = ($MyUpdates | Where-Object { $_.DownloadSuccess -eq $true }).Count
     
-    $summaryTitle = if ($InstallUpdates) { "FINAL DOWNLOAD `& INSTALLATION SUMMARY" } else { "FINAL DOWNLOAD SUMMARY" }
+    $summaryTitle = if ($InstallUpdates) { "FINAL DOWNLOAD & INSTALLATION SUMMARY" } else { "FINAL DOWNLOAD SUMMARY" }
     Write-Host ("`n" + "=" * 60) -ForegroundColor Cyan
     Write-Host $summaryTitle -ForegroundColor Cyan
     Write-Host ("=" * 60) -ForegroundColor Cyan
@@ -2103,5 +1876,5 @@ function Get-LocalUpdateStatus {
     Write-Host "`nNo missing updates found - system is up to date!" -ForegroundColor Green
   }
 
-  return $MyUpdates
+  $MyUpdates
 }
