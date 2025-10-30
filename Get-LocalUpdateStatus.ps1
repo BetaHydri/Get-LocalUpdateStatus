@@ -112,7 +112,7 @@ function Invoke-UpdateInstallation {
               
               # Method 1: extrac32.exe (better for SCOM .cab files)
               Write-Host "  Trying extrac32.exe for .cab extraction..." -ForegroundColor Gray
-              $extrac32Process = Start-Process -FilePath 'extrac32.exe' -ArgumentList @("/Y", "/E", $FilePath, $tempDir) -Wait -PassThru -NoNewWindow
+              $extrac32Process = Start-Process -FilePath 'extrac32.exe' -ArgumentList @("/Y", "/E", "/L", $tempDir, $FilePath) -Wait -PassThru -NoNewWindow
               if ($extrac32Process.ExitCode -eq 0) {
                 $extractSuccess = $true
                 Write-Host "  Extraction successful with extrac32.exe" -ForegroundColor Green
@@ -226,7 +226,7 @@ function Invoke-UpdateInstallation {
             
             # Try extrac32.exe first (better for SCOM .cab files)
             Write-Host "  Trying extrac32.exe for .cab extraction..." -ForegroundColor Gray
-            $extrac32Process = Start-Process -FilePath 'extrac32.exe' -ArgumentList @("/Y", "/E", $FilePath, $tempDir) -Wait -PassThru -NoNewWindow
+            $extrac32Process = Start-Process -FilePath 'extrac32.exe' -ArgumentList @("/Y", "/E", "/L", $tempDir, $FilePath) -Wait -PassThru -NoNewWindow
             
             if ($extrac32Process.ExitCode -eq 0) {
               Write-Host "  Extraction successful with extrac32.exe" -ForegroundColor Green
