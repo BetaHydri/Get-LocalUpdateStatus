@@ -344,7 +344,7 @@ function Invoke-UpdateInstallation {
             }
               
             Remove-Item -Path $tempDir -Recurse -Force -ErrorAction SilentlyContinue
-              
+            
             if ($installationSuccess) {
               return $true
             }
@@ -353,35 +353,30 @@ function Invoke-UpdateInstallation {
               return $false
             }
           }
-            
-          Remove-Item -Path $tempDir -Recurse -Force -ErrorAction SilentlyContinue
-          Write-Host "  Alternative installation methods failed: $fileName" -ForegroundColor Red
+          catch {
+            Write-Host "  Alternative installation failed with error: $($_.Exception.Message)" -ForegroundColor Red
+            return $false
+          }
+        }
+        elseif ($process.ExitCode -eq 50) {
+          Write-Host "  Installation skipped: Package not applicable to this system - $fileName" -ForegroundColor Yellow
+          return $true
+        }
+        elseif ($process.ExitCode -eq 87) {
+          Write-Host "  Installation failed: Invalid parameter - $fileName (Exit code: 87)" -ForegroundColor Red
           return $false
         }
-        catch {
-          Write-Host "  Alternative installation failed with error: $($_.Exception.Message)" -ForegroundColor Red
+        elseif ($process.ExitCode -eq 1460) {
+          Write-Host "  Installation failed: Package already installed - $fileName" -ForegroundColor Yellow
+          return $true
+        }
+        else {
+          Write-Host "  Installation failed: $fileName (Exit code: $($process.ExitCode))" -ForegroundColor Red
           return $false
         }
       }
-      elseif ($process.ExitCode -eq 50) {
-        Write-Host "  Installation skipped: Package not applicable to this system - $fileName" -ForegroundColor Yellow
-        return $true
-      }
-      elseif ($process.ExitCode -eq 87) {
-        Write-Host "  Installation failed: Invalid parameter - $fileName (Exit code: 87)" -ForegroundColor Red
-        return $false
-      }
-      elseif ($process.ExitCode -eq 1460) {
-        Write-Host "  Installation failed: Package already installed - $fileName" -ForegroundColor Yellow
-        return $true
-      }
-      else {
-        Write-Host "  Installation failed: $fileName (Exit code: $($process.ExitCode))" -ForegroundColor Red
-        return $false
-      }
-    }
       
-    '.msu' {
+      '.msu' {
       # Use WUSA for .msu files
       Write-Host "  Using WUSA for .msu installation..." -ForegroundColor Gray
       $wusaArgs = @(
