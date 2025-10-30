@@ -309,35 +309,94 @@ function Invoke-UpdateInstallation {
                 $mspFiles = Get-ChildItem -Path $tempDir -Filter "*.msp" -Recurse
                 if ($mspFiles) {
                   Write-Host "  Found $($mspFiles.Count) .msp file(s), attempting installation..." -ForegroundColor Cyan
+                  
+                  # Check if this is a SCOM Agent related patch
+                  $isSCOMPatch = ($Title -like "*SCOM*") -or 
+                                ($Title -like "*System Center Operations Manager*") -or
+                                ($Title -like "*Operations Manager*") -or
+                                ($fileName -like "*scom*") -or
+                                ($fileName -like "*mom*") -or
+                                ($mspFiles | Where-Object { $_.Name -like "*scom*" -or $_.Name -like "*mom*" -or $_.Name -like "*opsmgr*" })
+                  
+                  if ($isSCOMPatch) {
+                    Write-Host "  SCOM Agent patch detected - using enhanced installation method..." -ForegroundColor Yellow
+                  }
+                  
                   foreach ($mspFile in $mspFiles) {
-                    Write-Host "  Found extracted .msp file, installing with msiexec..." -ForegroundColor Gray
-                    $mspArgs = @(
-                      '/p'
-                      $mspFile.FullName
-                      '/quiet'
-                      '/norestart'
-                      'REBOOT=ReallySuppress'
-                    )
+                    Write-Host "  Installing .msp patch: $($mspFile.Name)" -ForegroundColor Gray
+                    
+                    # Enhanced .msp installation arguments for SCOM Agent
+                    $mspArgs = if ($isSCOMPatch) {
+                      @(
+                        '/p'
+                        $mspFile.FullName
+                        '/quiet'
+                        '/norestart'
+                        'REBOOT=ReallySuppress'
+                        'ALLUSERS=1'
+                        '/l*v'
+                        (Join-Path $env:TEMP "SCOM_MSP_Install_$([System.Guid]::NewGuid().ToString('N')[0..7] -join '').log")
+                      )
+                    } else {
+                      @(
+                        '/p'
+                        $mspFile.FullName
+                        '/quiet'
+                        '/norestart'
+                        'REBOOT=ReallySuppress'
+                      )
+                    }
                       
                     $mspProcess = Start-Process -FilePath 'msiexec.exe' -ArgumentList $mspArgs -Wait -PassThru -NoNewWindow
+                    
+                    # Enhanced exit code handling for .msp files
                     if ($mspProcess.ExitCode -eq 0) {
                       $installationSuccess = $true
-                      Write-Host "  Installation successful via extracted .msp: $fileName" -ForegroundColor Green
+                      Write-Host "  Installation successful via extracted .msp: $($mspFile.Name)" -ForegroundColor Green
                       break
                     }
                     elseif ($mspProcess.ExitCode -eq 3010) {
                       $installationSuccess = $true
-                      Write-Host "  Installation successful via extracted .msp (restart required): $fileName" -ForegroundColor Yellow
+                      Write-Host "  Installation successful via extracted .msp (restart required): $($mspFile.Name)" -ForegroundColor Yellow
                       break
                     }
                     elseif ($mspProcess.ExitCode -eq 1638) {
                       $installationSuccess = $true
-                      Write-Host "  Installation skipped: Patch already applied - $fileName" -ForegroundColor Yellow
+                      Write-Host "  Installation skipped: Patch already applied - $($mspFile.Name)" -ForegroundColor Yellow
                       break
+                    }
+                    elseif ($mspProcess.ExitCode -eq 1605) {
+                      Write-Host "  .msp installation failed: No products found to patch - $($mspFile.Name)" -ForegroundColor Red
+                      Write-Host "  This may indicate the base product (SCOM Agent) is not installed or the patch is not applicable" -ForegroundColor Yellow
+                    }
+                    elseif ($mspProcess.ExitCode -eq 1619) {
+                      Write-Host "  .msp installation failed: Package couldn't be opened - $($mspFile.Name)" -ForegroundColor Red
+                      Write-Host "  Verify the .msp file integrity and permissions" -ForegroundColor Yellow
+                    }
+                    elseif ($mspProcess.ExitCode -eq 1636) {
+                      Write-Host "  .msp installation failed: Patch package couldn't be opened - $($mspFile.Name)" -ForegroundColor Red
+                    }
+                    elseif ($mspProcess.ExitCode -eq 1633) {
+                      Write-Host "  .msp installation failed: Platform not supported - $($mspFile.Name)" -ForegroundColor Red
                     }
                     else {
                       Write-Host "  .msp installation failed (Exit code: $($mspProcess.ExitCode)): $($mspFile.Name)" -ForegroundColor Red
+                      if ($isSCOMPatch) {
+                        $logFile = $mspArgs | Where-Object { $_ -like "*.log" }
+                        if ($logFile -and (Test-Path $logFile)) {
+                          Write-Host "  Check SCOM installation log for details: $logFile" -ForegroundColor Cyan
+                        }
+                      }
                     }
+                  }
+                  
+                  # If SCOM patch failed, provide additional guidance
+                  if (-not $installationSuccess -and $isSCOMPatch) {
+                    Write-Host "  SCOM Agent patch installation failed. Common issues:" -ForegroundColor Yellow
+                    Write-Host "    - Ensure SCOM Agent is installed before applying patches" -ForegroundColor Gray
+                    Write-Host "    - Check if the patch matches the installed SCOM Agent version" -ForegroundColor Gray
+                    Write-Host "    - Verify Administrator privileges" -ForegroundColor Gray
+                    Write-Host "    - Check Windows Event Log for additional error details" -ForegroundColor Gray
                   }
                 }
               }
@@ -501,16 +560,44 @@ function Invoke-UpdateInstallation {
       '.msp' {
         # Use msiexec for .msp files (Microsoft Patch files)
         Write-Host "  Using msiexec for .msp patch installation..." -ForegroundColor Gray
-        $mspArgs = @(
-          '/p'
-          $FilePath
-          '/quiet'
-          '/norestart'
-          'REBOOT=ReallySuppress'
-        )
+        
+        # Check if this is a SCOM Agent related patch
+        $isSCOMPatch = ($Title -like "*SCOM*") -or 
+                      ($Title -like "*System Center Operations Manager*") -or
+                      ($Title -like "*Operations Manager*") -or
+                      ($fileName -like "*scom*") -or
+                      ($fileName -like "*mom*") -or
+                      ($fileName -like "*opsmgr*")
+        
+        if ($isSCOMPatch) {
+          Write-Host "  SCOM Agent patch detected - using enhanced installation method..." -ForegroundColor Yellow
+        }
+        
+        # Enhanced .msp installation arguments for SCOM Agent
+        $mspArgs = if ($isSCOMPatch) {
+          @(
+            '/p'
+            $FilePath
+            '/quiet'
+            '/norestart'
+            'REBOOT=ReallySuppress'
+            'ALLUSERS=1'
+            '/l*v'
+            (Join-Path $env:TEMP "SCOM_MSP_Direct_$([System.Guid]::NewGuid().ToString('N')[0..7] -join '').log")
+          )
+        } else {
+          @(
+            '/p'
+            $FilePath
+            '/quiet'
+            '/norestart'
+            'REBOOT=ReallySuppress'
+          )
+        }
         
         $process = Start-Process -FilePath 'msiexec.exe' -ArgumentList $mspArgs -Wait -PassThru -NoNewWindow
         
+        # Enhanced exit code handling for .msp files
         if ($process.ExitCode -eq 0) {
           Write-Host "  Installation successful: $fileName" -ForegroundColor Green
           return $true
@@ -525,23 +612,52 @@ function Invoke-UpdateInstallation {
         }
         elseif ($process.ExitCode -eq 1605) {
           Write-Host "  Installation failed: No products found to patch - $fileName" -ForegroundColor Red
+          if ($isSCOMPatch) {
+            Write-Host "  This may indicate the SCOM Agent is not installed or the patch is not applicable" -ForegroundColor Yellow
+          }
           return $false
         }
         elseif ($process.ExitCode -eq 1619) {
-          Write-Host "  Installation failed: Package could not be opened - $fileName" -ForegroundColor Red
+          Write-Host "  Installation failed: Package couldn't be opened - $fileName" -ForegroundColor Red
+          Write-Host "  Verify the .msp file integrity and permissions" -ForegroundColor Yellow
+          return $false
+        }
+        elseif ($process.ExitCode -eq 1636) {
+          Write-Host "  Installation failed: Patch package couldn't be opened - $fileName" -ForegroundColor Red
           return $false
         }
         elseif ($process.ExitCode -eq 1633) {
           Write-Host "  Installation failed: Platform not supported - $fileName" -ForegroundColor Red
           return $false
         }
-        elseif ($process.ExitCode -eq 1636) {
-          Write-Host "  Installation failed: Patch package cannot be opened - $fileName" -ForegroundColor Red
+        else {
+          Write-Host "  Installation failed: $fileName (Exit code: $($process.ExitCode))" -ForegroundColor Red
+          if ($isSCOMPatch) {
+            $logFile = $mspArgs | Where-Object { $_ -like "*.log" }
+            if ($logFile -and (Test-Path $logFile)) {
+              Write-Host "  Check SCOM installation log for details: $logFile" -ForegroundColor Cyan
+            }
+            Write-Host "  SCOM Agent patch installation failed. Common issues:" -ForegroundColor Yellow
+            Write-Host "    - Ensure SCOM Agent is installed before applying patches" -ForegroundColor Gray
+            Write-Host "    - Check if the patch matches the installed SCOM Agent version" -ForegroundColor Gray
+            Write-Host "    - Verify Administrator privileges" -ForegroundColor Gray
+            Write-Host "    - Check Windows Event Log for additional error details" -ForegroundColor Gray
+          }
           return $false
         }
         else {
           Write-Host "  Installation failed: $fileName (Exit code: $($process.ExitCode))" -ForegroundColor Red
-          Write-Host "  Note: MSP error codes indicate patch-specific installation issues" -ForegroundColor Gray
+          if ($isSCOMPatch) {
+            $logFile = $mspArgs | Where-Object { $_ -like "*.log" }
+            if ($logFile -and (Test-Path $logFile)) {
+              Write-Host "  Check SCOM installation log for details: $logFile" -ForegroundColor Cyan
+            }
+            Write-Host "  SCOM Agent patch installation failed. Common issues:" -ForegroundColor Yellow
+            Write-Host "    - Ensure SCOM Agent is installed before applying patches" -ForegroundColor Gray
+            Write-Host "    - Check if the patch matches the installed SCOM Agent version" -ForegroundColor Gray
+            Write-Host "    - Verify Administrator privileges" -ForegroundColor Gray
+            Write-Host "    - Check Windows Event Log for additional error details" -ForegroundColor Gray
+          }
           return $false
         }
       }
