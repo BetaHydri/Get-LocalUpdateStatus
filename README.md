@@ -583,6 +583,41 @@ If you encounter errors with filters like `'IsHidden=0 and IsInstalled=0'` in of
 - **Requirements:** PowerShell 4.0+, Administrator privileges
 - **Operation:** Local computer only
 
+## Recent Updates (v1.8.4)
+
+### Enhanced SCOM Agent Support
+✅ **Improved SCOM Agent patch handling** with specialized detection and installation  
+✅ **Enhanced .msp file processing** for System Center Operations Manager updates  
+✅ **Fixed .cab extraction** with corrected `extrac32.exe` argument syntax  
+✅ **Prioritized `extrac32.exe`** over `expand.exe` for better SCOM .cab file extraction  
+✅ **Comprehensive error handling** for SCOM-specific installation scenarios  
+✅ **Detailed logging** for SCOM patch installations with verbose output  
+
+### Technical Improvements
+✅ **Fixed `extrac32.exe` arguments** - now uses correct `/L` parameter for extraction directory  
+✅ **Enhanced .cab extraction priority** - `extrac32.exe` first, `expand.exe` as fallback  
+✅ **Removed unnecessary nested .cab logic** for cleaner, more reliable extraction  
+✅ **Improved SCOM Agent detection** with multiple pattern matching methods  
+✅ **Enhanced .msp installation** with `ALLUSERS=1` and comprehensive logging  
+
+### SCOM Agent Specific Features
+✅ **Automatic SCOM detection** via title keywords (*SCOM*, *System Center*, *Operations Manager*)  
+✅ **Enhanced .msp installation arguments** including `ALLUSERS=1` and verbose logging  
+✅ **Comprehensive exit code handling** for SCOM-specific installation scenarios  
+✅ **Detailed troubleshooting guidance** for common SCOM Agent patch issues  
+
+**Example SCOM Agent Usage:**
+```powershell
+# Download and install SCOM Agent updates
+Get-LocalUpdateStatus -UpdateSearchFilter 'IsInstalled=0' -DownloadUpdates -InstallUpdates
+
+# The script automatically detects SCOM updates and uses enhanced installation:
+# - Prioritizes extrac32.exe for .cab extraction
+# - Uses specialized .msp installation with ALLUSERS=1
+# - Provides detailed SCOM-specific error messaging
+# - Creates verbose logs for troubleshooting
+```
+
 ---
 
 *For additional support or feature requests, please refer to the project repository.*
