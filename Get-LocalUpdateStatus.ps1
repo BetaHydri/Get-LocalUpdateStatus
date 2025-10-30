@@ -1161,8 +1161,9 @@ function Get-LocalUpdateStatus {
   }
 
   # Validate parameter combinations
-  if ($InstallUpdates -and -not $DownloadUpdates) {
-    Write-Error "InstallUpdates requires DownloadUpdates to be enabled. Use both -DownloadUpdates and -InstallUpdates parameters."
+  # InstallUpdates without DownloadUpdates is allowed in ImportReport mode (air-gapped scenario)
+  if ($InstallUpdates -and -not $DownloadUpdates -and $PSCmdlet.ParameterSetName -ne 'ImportReport') {
+    Write-Error "InstallUpdates requires DownloadUpdates to be enabled, unless using ImportReport mode for air-gapped installations. Use both -DownloadUpdates and -InstallUpdates parameters, or use -ImportReport with -InstallUpdates for pre-downloaded files."
     return
   }
 
@@ -1180,6 +1181,139 @@ function Get-LocalUpdateStatus {
       }
       
       Write-Host "Successfully loaded $($importedData.Count) updates from report" -ForegroundColor Green
+      
+      # Air-gapped installation mode: Install pre-downloaded files without downloading
+      if ($InstallUpdates -and -not $DownloadUpdates) {
+        Write-Host "`nAir-gapped installation mode: Searching for pre-downloaded files..." -ForegroundColor Cyan
+        Write-Host "Download directory: $DownloadPath" -ForegroundColor White
+        
+        # Verify download directory exists
+        if (-not (Test-Path $DownloadPath)) {
+          Write-Error "Download path '$DownloadPath' does not exist. Please specify the directory containing pre-downloaded update files."
+          return
+        }
+        
+        # Prepare imported updates for air-gapped installation
+        $MyUpdates = @()
+        $matchedFiles = 0
+        
+        # Get all potential update files from download directory
+        $allDownloadedFiles = Get-ChildItem -Path $DownloadPath -File -Recurse | Where-Object { $_.Extension -match '\.(cab|msu|msi|msp|exe)$' }
+        Write-Host "Found $($allDownloadedFiles.Count) potential update files in download directory" -ForegroundColor Gray
+        
+        Write-Host "`nAir-gapped mode: Searching for matching update files in '$DownloadPath'..." -ForegroundColor Gray
+        foreach ($update in $importedData) {
+          $matched = $false
+          $update | Add-Member -MemberType NoteProperty -Name DownloadSuccess -Value $false -Force
+          $update | Add-Member -MemberType NoteProperty -Name DownloadedFilePath -Value $null -Force
+          $update | Add-Member -MemberType NoteProperty -Name MatchMethod -Value $null -Force
+          
+          # Method 1: Try to match by KB ID in filename
+          if ($update.KbId) {
+            $kbPattern = "*$($update.KbId)*"
+            $kbMatches = $allDownloadedFiles | Where-Object { $_.Name -like $kbPattern }
+            if ($kbMatches) {
+              $bestMatch = $kbMatches | Select-Object -First 1
+              $update.DownloadSuccess = $true
+              $update.DownloadedFilePath = $bestMatch.FullName
+              $update.MatchMethod = "KB ID ($($update.KbId))"
+              $matched = $true
+              $matchedFiles++
+              Write-Host "  Matched KB$($update.KbId) with file: $($bestMatch.Name)" -ForegroundColor Green
+            }
+          }
+          
+          # Method 2: Try to match by filename from DownloadURL if KB matching failed
+          if (-not $matched -and $update.DownloadURL) {
+            $expectedFileName = [System.IO.Path]::GetFileName($update.DownloadURL)
+            $urlMatches = $allDownloadedFiles | Where-Object { $_.Name -eq $expectedFileName }
+            if ($urlMatches) {
+              $bestMatch = $urlMatches | Select-Object -First 1
+              $update.DownloadSuccess = $true
+              $update.DownloadedFilePath = $bestMatch.FullName
+              $update.MatchMethod = "Filename ($expectedFileName)"
+              $matched = $true
+              $matchedFiles++
+              Write-Host "  Matched KB$($update.KbId) with file: $($bestMatch.Name)" -ForegroundColor Green
+            }
+          }
+          
+          # Method 3: Try to match by title keywords for complex updates
+          if (-not $matched -and $update.Title) {
+            $titleWords = $update.Title -split '\s+' | Where-Object { $_.Length -gt 3 -and $_ -notmatch '^(for|and|the|update|security|Microsoft|Windows)$' } | Select-Object -First 3
+            foreach ($word in $titleWords) {
+              $titleMatches = $allDownloadedFiles | Where-Object { $_.Name -like "*$word*" }
+              if ($titleMatches) {
+                $bestMatch = $titleMatches | Select-Object -First 1
+                $update.DownloadSuccess = $true
+                $update.DownloadedFilePath = $bestMatch.FullName
+                $update.MatchMethod = "Title keyword ($word)"
+                $matched = $true
+                $matchedFiles++
+                Write-Host "  Matched KB$($update.KbId) with file: $($bestMatch.Name) (by keyword: $word)" -ForegroundColor Yellow
+                break
+              }
+            }
+          }
+          
+          if (-not $matched) {
+            Write-Host "  No matching file found for KB$($update.KbId): $($update.Title)" -ForegroundColor Red
+          }
+          
+          $MyUpdates += $update
+        }
+        
+        # Report on unmatched files
+        $matchedFileNames = $MyUpdates | Where-Object { $_.DownloadSuccess } | ForEach-Object { Split-Path $_.DownloadedFilePath -Leaf }
+        $unmatched = $allDownloadedFiles | Where-Object { $_.Name -notin $matchedFileNames }
+        if ($unmatched) {
+          Write-Host "`nWarning: Found $($unmatched.Count) update files that don't match imported updates:" -ForegroundColor Yellow
+          foreach ($file in $unmatched) {
+            Write-Host "  - $($file.Name) (not in XML - will be ignored)" -ForegroundColor DarkYellow
+          }
+          Write-Host "Only updates from the imported XML will be installed for security." -ForegroundColor Yellow
+        }
+        
+        # Proceed with installation of matched files
+        $updatesToInstall = $MyUpdates | Where-Object { $_.DownloadSuccess -eq $true -and $_.DownloadedFilePath }
+        
+        if ($updatesToInstall -and $updatesToInstall.Count -gt 0) {
+          Write-Host "`nProceeding with batch installation of $($updatesToInstall.Count) matched updates..." -ForegroundColor Cyan
+          $installResults = Invoke-UpdateBatchInstallation -UpdatesToInstall $updatesToInstall
+          
+          # Add installation results to the updates
+          foreach ($result in $installResults) {
+            $update = $MyUpdates | Where-Object { $_.KbId -eq $result.KbId }
+            if ($update) {
+              $update | Add-Member -MemberType NoteProperty -Name InstallationSuccess -Value $result.Success -Force
+              $update | Add-Member -MemberType NoteProperty -Name InstallationDuration -Value $result.Duration -Force
+              $update | Add-Member -MemberType NoteProperty -Name InstallationTime -Value $result.InstallationTime -Force
+            }
+          }
+          
+          # Final summary
+          $successfulInstalls = ($installResults | Where-Object { $_.Success }).Count
+          $failedInstalls = ($installResults | Where-Object { -not $_.Success }).Count
+          
+          Write-Host ("`n" + "=" * 60) -ForegroundColor Cyan
+          Write-Host "AIR-GAPPED INSTALLATION SUMMARY" -ForegroundColor Cyan
+          Write-Host ("=" * 60) -ForegroundColor Cyan
+          Write-Host "Total updates in XML: $($importedData.Count)" -ForegroundColor White
+          Write-Host "Files matched: $matchedFiles" -ForegroundColor Green
+          Write-Host "Files installed successfully: $successfulInstalls" -ForegroundColor Green
+          Write-Host "Files failed to install: $failedInstalls" -ForegroundColor Red
+          Write-Host "Files not found: $($importedData.Count - $matchedFiles)" -ForegroundColor Yellow
+          Write-Host "Download directory: $DownloadPath" -ForegroundColor White
+          Write-Host ("=" * 60) -ForegroundColor Cyan
+        }
+        else {
+          Write-Host "`nNo matching update files found for installation." -ForegroundColor Red
+          Write-Host "Ensure the pre-downloaded files are in: $DownloadPath" -ForegroundColor Yellow
+          Write-Host "Supported file types: .cab, .msu, .msi, .msp, .exe" -ForegroundColor Gray
+        }
+        
+        return $MyUpdates
+      }
       
       # If download is requested, process downloads for imported data
       if ($DownloadUpdates) {
