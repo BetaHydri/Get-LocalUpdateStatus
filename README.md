@@ -14,8 +14,8 @@ Get-LocalUpdateStatus provides a complete solution for Windows Update management
 
 ✅ **Local-only operation** - runs directly on the computer to be scanned  
 ✅ **Batch download-first-then-install workflow** with interactive confirmation  
-✅ **Enhanced file format support**: .cab (DISM + extraction fallback), .msu (WUSA), .msi (msiexec), .exe (silent execution)  
-✅ **Intelligent .cab handling** with automatic extraction and multi-format installation (.msu/.msi content)  
+✅ **Comprehensive file format support**: .cab (DISM + extraction fallback), .msu (WUSA), .msi (msiexec), .msp (msiexec), .exe (silent execution)  
+✅ **Intelligent .cab handling** with automatic extraction and multi-format installation (.msu/.msi/.msp content)  
 ✅ **WSUS offline scanning** using Microsoft's wsusscn2.cab for air-gapped environments  
 ✅ **Export/Import functionality** for transferring scan data between machines  
 ✅ **Robust error handling** with fallback methods for complex update packages  
@@ -401,12 +401,16 @@ Recommendation: Restart the computer to complete installation
 
 - **.cab files**: Installed via DISM with `/Online /Add-Package /Quiet /NoRestart`
   - **Enhanced fallback**: If DISM fails (exit code 2), automatically extracts .cab content
-  - **Smart extraction**: Supports .msu and .msi files found within .cab packages
+  - **Smart extraction**: Supports .msu, .msi, and .msp files found within .cab packages
   - **Azure Connected Machine Agent**: Special handling for complex agent updates
 - **.msu files**: Installed via WUSA with `/quiet /norestart`
 - **.msi files**: Installed via msiexec with `/i /quiet /norestart REBOOT=ReallySuppress`
   - **Comprehensive error handling**: Detects already installed (1638), platform issues (1633)
   - **Extracted content**: Automatically handles .msi files found in .cab packages
+- **.msp files**: Installed via msiexec with `/p /quiet /norestart REBOOT=ReallySuppress`
+  - **Microsoft Patch files**: Handles patch installations for existing products
+  - **Smart error handling**: Detects already applied patches (1638), missing products (1605)
+  - **Extracted content**: Automatically handles .msp files found in .cab packages
 - **.exe files**: Installed with intelligent silent switches:
   - **Malicious Software Removal Tool**: Uses `/Q`
   - **Windows Defender/Antimalware**: Uses `/q`
@@ -477,7 +481,7 @@ If you encounter errors with filters like `'IsHidden=0 and IsInstalled=0'` in of
 
 ## Version Information
 
-- **Version:** 1.6.0
+- **Version:** 1.7.0
 - **Author:** Jan Tiedemann  
 - **Copyright:** 2021-2025
 - **Requirements:** PowerShell 4.0+, Administrator privileges
