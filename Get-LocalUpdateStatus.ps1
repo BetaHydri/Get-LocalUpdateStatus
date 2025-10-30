@@ -224,29 +224,56 @@ function Invoke-UpdateInstallation {
             Write-Host "  Attempting .cab extraction and manual installation..." -ForegroundColor Gray
             $expandProcess = Start-Process -FilePath 'expand.exe' -ArgumentList @("-F:*", $FilePath, $tempDir) -Wait -PassThru -NoNewWindow
             
-            if ($expandProcess.ExitCode -eq 0) {
-              $installationSuccess = $false
-              
-              # Look for .msu files in extracted content
-              $msuFiles = Get-ChildItem -Path $tempDir -Filter "*.msu" -Recurse
-              if ($msuFiles) {
-                foreach ($msuFile in $msuFiles) {
-                  Write-Host "  Found extracted .msu file, installing with WUSA..." -ForegroundColor Gray
-                  $wusaProcess = Start-Process -FilePath 'wusa.exe' -ArgumentList @($msuFile.FullName, '/quiet', '/norestart') -Wait -PassThru -NoNewWindow
-                  if ($wusaProcess.ExitCode -eq 0 -or $wusaProcess.ExitCode -eq 3010) {
-                    $installationSuccess = $true
-                    Write-Host "  Installation successful via extracted .msu: $fileName" -ForegroundColor Green
-                    break
-                  }
+            # If expand.exe fails, try extrac32.exe as alternative
+            if ($expandProcess.ExitCode -ne 0) {
+              Write-Host "  expand.exe failed (exit code: $($expandProcess.ExitCode)), trying extrac32.exe..." -ForegroundColor Yellow
+              $extrac32Process = Start-Process -FilePath 'extrac32.exe' -ArgumentList @("/Y", "/E", $FilePath, $tempDir) -Wait -PassThru -NoNewWindow
+              if ($extrac32Process.ExitCode -eq 0) {
+                Write-Host "  Extraction successful with extrac32.exe" -ForegroundColor Green
+              }
+              else {
+                Write-Host "  Both extraction methods failed. expand.exe: $($expandProcess.ExitCode), extrac32.exe: $($extrac32Process.ExitCode)" -ForegroundColor Red
+                Remove-Item -Path $tempDir -Recurse -Force -ErrorAction SilentlyContinue
+                return $false
+              }
+            }
+            else {
+              Write-Host "  Extraction successful with expand.exe" -ForegroundColor Green
+            }
+            
+            # Analysis phase - check what was extracted
+            $installationSuccess = $false
+            
+            # Debug: List all extracted files
+            Write-Host "  Analyzing extracted content..." -ForegroundColor Gray
+            $allExtractedFiles = Get-ChildItem -Path $tempDir -Recurse -File
+            Write-Host "  Found $($allExtractedFiles.Count) files in extracted content:" -ForegroundColor Gray
+            foreach ($file in $allExtractedFiles) {
+              Write-Host "    - $($file.Name) ($($file.Extension.ToLower())) [$(($file.Length/1KB).ToString('F1')) KB]" -ForegroundColor DarkGray
+            }
+            
+            # Look for .msu files in extracted content
+            $msuFiles = Get-ChildItem -Path $tempDir -Filter "*.msu" -Recurse
+            if ($msuFiles) {
+              Write-Host "  Found $($msuFiles.Count) .msu file(s), attempting installation..." -ForegroundColor Cyan
+              foreach ($msuFile in $msuFiles) {
+                Write-Host "  Installing .msu file: $($msuFile.Name)" -ForegroundColor Gray
+                $wusaProcess = Start-Process -FilePath 'wusa.exe' -ArgumentList @($msuFile.FullName, '/quiet', '/norestart') -Wait -PassThru -NoNewWindow
+                if ($wusaProcess.ExitCode -eq 0 -or $wusaProcess.ExitCode -eq 3010) {
+                  $installationSuccess = $true
+                  Write-Host "  Installation successful via extracted .msu: $fileName" -ForegroundColor Green
+                  break
                 }
               }
-              
-              # Look for .msi files in extracted content if .msu installation failed
-              if (-not $installationSuccess) {
-                $msiFiles = Get-ChildItem -Path $tempDir -Filter "*.msi" -Recurse
-                if ($msiFiles) {
-                  foreach ($msiFile in $msiFiles) {
-                    Write-Host "  Found extracted .msi file, installing with msiexec..." -ForegroundColor Gray
+            }
+            
+            # Look for .msi files in extracted content if .msu installation failed
+            if (-not $installationSuccess) {
+              $msiFiles = Get-ChildItem -Path $tempDir -Filter "*.msi" -Recurse
+              if ($msiFiles) {
+                Write-Host "  Found $($msiFiles.Count) .msi file(s), attempting installation..." -ForegroundColor Cyan
+                foreach ($msiFile in $msiFiles) {
+                  Write-Host "  Installing .msi file: $($msiFile.Name)" -ForegroundColor Gray
                     $msiArgs = @(
                       '/i'
                       $msiFile.FullName
@@ -281,6 +308,7 @@ function Invoke-UpdateInstallation {
                 if (-not $installationSuccess) {
                   $mspFiles = Get-ChildItem -Path $tempDir -Filter "*.msp" -Recurse
                   if ($mspFiles) {
+                    Write-Host "  Found $($mspFiles.Count) .msp file(s), attempting installation..." -ForegroundColor Cyan
                     foreach ($mspFile in $mspFiles) {
                       Write-Host "  Found extracted .msp file, installing with msiexec..." -ForegroundColor Gray
                       $mspArgs = @(
