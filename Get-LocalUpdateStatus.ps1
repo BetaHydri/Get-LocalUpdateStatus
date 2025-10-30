@@ -222,23 +222,26 @@ function Invoke-UpdateInstallation {
             New-Item -Path $tempDir -ItemType Directory -Force | Out-Null
             
             Write-Host "  Attempting .cab extraction and manual installation..." -ForegroundColor Gray
-            $expandProcess = Start-Process -FilePath 'expand.exe' -ArgumentList @("-F:*", $FilePath, $tempDir) -Wait -PassThru -NoNewWindow
             
-            # If expand.exe fails, try extrac32.exe as alternative
-            if ($expandProcess.ExitCode -ne 0) {
-              Write-Host "  expand.exe failed (exit code: $($expandProcess.ExitCode)), trying extrac32.exe..." -ForegroundColor Yellow
-              $extrac32Process = Start-Process -FilePath 'extrac32.exe' -ArgumentList @("/Y", "/E", $FilePath, $tempDir) -Wait -PassThru -NoNewWindow
-              if ($extrac32Process.ExitCode -eq 0) {
-                Write-Host "  Extraction successful with extrac32.exe" -ForegroundColor Green
+            # Try extrac32.exe first (better for SCOM .cab files)
+            Write-Host "  Trying extrac32.exe for .cab extraction..." -ForegroundColor Gray
+            $extrac32Process = Start-Process -FilePath 'extrac32.exe' -ArgumentList @("/Y", "/E", $FilePath, $tempDir) -Wait -PassThru -NoNewWindow
+            
+            if ($extrac32Process.ExitCode -eq 0) {
+              Write-Host "  Extraction successful with extrac32.exe" -ForegroundColor Green
+            }
+            else {
+              # If extrac32.exe fails, try expand.exe as fallback
+              Write-Host "  extrac32.exe failed (exit code: $($extrac32Process.ExitCode)), trying expand.exe..." -ForegroundColor Yellow
+              $expandProcess = Start-Process -FilePath 'expand.exe' -ArgumentList @("-F:*", $FilePath, $tempDir) -Wait -PassThru -NoNewWindow
+              if ($expandProcess.ExitCode -eq 0) {
+                Write-Host "  Extraction successful with expand.exe" -ForegroundColor Green
               }
               else {
-                Write-Host "  Both extraction methods failed. expand.exe: $($expandProcess.ExitCode), extrac32.exe: $($extrac32Process.ExitCode)" -ForegroundColor Red
+                Write-Host "  Both extraction methods failed. extrac32.exe: $($extrac32Process.ExitCode), expand.exe: $($expandProcess.ExitCode)" -ForegroundColor Red
                 Remove-Item -Path $tempDir -Recurse -Force -ErrorAction SilentlyContinue
                 return $false
               }
-            }
-            else {
-              Write-Host "  Extraction successful with expand.exe" -ForegroundColor Green
             }
             
             # Analysis phase - check what was extracted
@@ -324,103 +327,7 @@ function Invoke-UpdateInstallation {
                 }
               }
               else {
-                # No .msp files found directly - check for nested .cab files
-                Write-Host "  No .msp files found directly - checking for nested .cab files..." -ForegroundColor Yellow
-                $nestedCabFiles = Get-ChildItem -Path $tempDir -Filter "*.cab" -Recurse
-                if ($nestedCabFiles) {
-                  Write-Host "  Found $($nestedCabFiles.Count) nested .cab file(s), attempting extraction..." -ForegroundColor Cyan
-                  
-                  foreach ($nestedCab in $nestedCabFiles) {
-                    Write-Host "  Extracting nested .cab file: $($nestedCab.Name)" -ForegroundColor Gray
-                    
-                    # Create subdirectory for nested cab extraction
-                    $nestedTempDir = Join-Path $tempDir "Nested_$([System.Guid]::NewGuid().ToString('N')[0..7] -join '')"
-                    New-Item -Path $nestedTempDir -ItemType Directory -Force | Out-Null
-                    
-                    # Extract nested .cab file
-                    $nestedExpandProcess = Start-Process -FilePath 'expand.exe' -ArgumentList @("-F:*", $nestedCab.FullName, $nestedTempDir) -Wait -PassThru -NoNewWindow
-                    
-                    if ($nestedExpandProcess.ExitCode -eq 0) {
-                      Write-Host "  Nested extraction successful with expand.exe" -ForegroundColor Green
-                      
-                      # Analyze nested extracted content
-                      $nestedExtractedFiles = Get-ChildItem -Path $nestedTempDir -Recurse -File
-                      Write-Host "  Found $($nestedExtractedFiles.Count) files in nested extraction:" -ForegroundColor Gray
-                      foreach ($nestedFile in $nestedExtractedFiles) {
-                        Write-Host "    - $($nestedFile.Name) ($($nestedFile.Extension.ToLower())) [$(($nestedFile.Length/1KB).ToString('F1')) KB]" -ForegroundColor DarkGray
-                      }
-                      
-                      # Look for .msp files in nested content
-                      $nestedMspFiles = Get-ChildItem -Path $nestedTempDir -Filter "*.msp" -Recurse
-                      if ($nestedMspFiles) {
-                        Write-Host "  Found $($nestedMspFiles.Count) .msp file(s) in nested extraction, attempting SCOM installation..." -ForegroundColor Cyan
-                        
-                        foreach ($nestedMspFile in $nestedMspFiles) {
-                          Write-Host "  Installing nested SCOM .msp patch: $($nestedMspFile.Name)" -ForegroundColor Gray
-                          
-                          # Enhanced .msp installation arguments for SCOM Agent
-                          $nestedMspArgs = @(
-                            '/p'
-                            $nestedMspFile.FullName
-                            '/quiet'
-                            '/norestart'
-                            'REBOOT=ReallySuppress'
-                            'ALLUSERS=1'
-                            '/l*v'
-                            (Join-Path $env:TEMP "SCOM_Nested_MSP_$([System.Guid]::NewGuid().ToString('N')[0..7] -join '').log")
-                          )
-                          
-                          $nestedMspProcess = Start-Process -FilePath 'msiexec.exe' -ArgumentList $nestedMspArgs -Wait -PassThru -NoNewWindow
-                          
-                          if ($nestedMspProcess.ExitCode -eq 0) {
-                            $installationSuccess = $true
-                            Write-Host "  SCOM installation successful via nested .msp: $($nestedMspFile.Name)" -ForegroundColor Green
-                            break
-                          }
-                          elseif ($nestedMspProcess.ExitCode -eq 3010) {
-                            $installationSuccess = $true
-                            Write-Host "  SCOM installation successful (restart required): $($nestedMspFile.Name)" -ForegroundColor Yellow
-                            break
-                          }
-                          elseif ($nestedMspProcess.ExitCode -eq 1638) {
-                            $installationSuccess = $true
-                            Write-Host "  SCOM patch already applied: $($nestedMspFile.Name)" -ForegroundColor Yellow
-                            break
-                          }
-                          elseif ($nestedMspProcess.ExitCode -eq 1605) {
-                            Write-Host "  SCOM .msp installation failed: No products found to patch - $($nestedMspFile.Name)" -ForegroundColor Red
-                            Write-Host "  This indicates the SCOM Agent is not installed or the patch is not applicable" -ForegroundColor Yellow
-                          }
-                          elseif ($nestedMspProcess.ExitCode -eq 1619) {
-                            Write-Host "  SCOM .msp installation failed: Package couldn't be opened - $($nestedMspFile.Name)" -ForegroundColor Red
-                            Write-Host "  Verify the .msp file integrity and permissions" -ForegroundColor Yellow
-                          }
-                          else {
-                            Write-Host "  SCOM .msp installation failed (Exit code: $($nestedMspProcess.ExitCode)): $($nestedMspFile.Name)" -ForegroundColor Red
-                            $logFile = $nestedMspArgs | Where-Object { $_ -like "*.log" }
-                            if ($logFile -and (Test-Path $logFile)) {
-                              Write-Host "  Check SCOM installation log for details: $logFile" -ForegroundColor Cyan
-                            }
-                          }
-                        }
-                        
-                        if ($installationSuccess) {
-                          break  # Exit the nested cab loop if we succeeded
-                        }
-                      }
-                      else {
-                        Write-Host "  No .msp files found in nested .cab: $($nestedCab.Name)" -ForegroundColor Yellow
-                      }
-                    }
-                    else {
-                      Write-Host "  Nested .cab extraction failed (exit code: $($nestedExpandProcess.ExitCode)): $($nestedCab.Name)" -ForegroundColor Red
-                    }
-                    
-                    if ($installationSuccess) {
-                      break  # Exit the nested cab loop if we succeeded
-                    }
-                  }
-                }
+                Write-Host "  No .msp files found in .cab file." -ForegroundColor Yellow
               }
             }
             
