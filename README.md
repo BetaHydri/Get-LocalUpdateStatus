@@ -577,13 +577,45 @@ If you encounter errors with filters like `'IsHidden=0 and IsInstalled=0'` in of
 
 ## Version Information
 
-- **Version:** 1.8.4
+- **Version:** 1.8.5
 - **Author:** Jan Tiedemann  
 - **Copyright:** 2021-2025
 - **Requirements:** PowerShell 4.0+, Administrator privileges
 - **Operation:** Local computer only
 
-## Recent Updates (v1.8.4)
+## Recent Updates (v1.8.5)
+
+### Enhanced Air-Gapped Installation Mode
+✅ **Intuitive air-gapped parameter combination** - `InstallUpdates` now works without `DownloadUpdates` in ImportReport mode  
+✅ **Smart file matching system** - 3-tier matching: KB ID → Filename → Title keywords  
+✅ **Enhanced security for pre-downloaded files** - Only installs updates from imported XML for safety  
+✅ **Comprehensive file matching reporting** - Shows which files match and which are ignored  
+✅ **Flexible air-gapped workflow** - Perfect for environments where patches are pre-downloaded  
+
+### Improved Parameter Validation
+✅ **More intuitive parameter combinations** - `Get-LocalUpdateStatus -ImportReport file.xml -DownloadPath C:\Updates -InstallUpdates`  
+✅ **Air-gapped mode detection** - Automatically enables when ImportReport is used without DownloadUpdates  
+✅ **Enhanced user guidance** - Clear error messages for invalid parameter combinations  
+
+### Air-Gapped Installation Features
+✅ **Intelligent file matching** - Matches by KB ID in filename first, then by original filename, then by title keywords  
+✅ **Security-focused installation** - Only installs files that match the imported XML report  
+✅ **Comprehensive progress reporting** - Shows match methods, unmatched files, and installation results  
+✅ **Support for all update types** - Works with .cab, .msu, .msi, .msp, and .exe files in air-gapped mode  
+
+**Example Air-Gapped Usage:**
+```powershell
+# New intuitive approach - no DownloadUpdates needed for pre-downloaded files
+Get-LocalUpdateStatus -ImportReport C:\Temp\temp.xml -DownloadPath C:\Temp\serverdownload\ -InstallUpdates
+
+# This automatically:
+# - Detects air-gapped mode (ImportReport without DownloadUpdates)
+# - Searches for matching files in the download directory
+# - Only installs updates that match the imported XML for security
+# - Provides detailed reporting on matched/unmatched files
+```
+
+## Previous Updates (v1.8.4)
 
 ### Enhanced SCOM Agent Support
 ✅ **Improved SCOM Agent patch handling** with specialized detection and installation  
