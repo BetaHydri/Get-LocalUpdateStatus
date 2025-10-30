@@ -110,20 +110,21 @@ function Invoke-UpdateInstallation {
               # Try different extraction methods for this specific agent
               $extractSuccess = $false
               
-              # Method 1: expand.exe with verbose extraction
-              $expandProcess = Start-Process -FilePath 'expand.exe' -ArgumentList @("-F:*", $FilePath, $tempDir, "-R") -Wait -PassThru -NoNewWindow
-              if ($expandProcess.ExitCode -eq 0) {
+              # Method 1: extrac32.exe (better for SCOM .cab files)
+              Write-Host "  Trying extrac32.exe for .cab extraction..." -ForegroundColor Gray
+              $extrac32Process = Start-Process -FilePath 'extrac32.exe' -ArgumentList @("/Y", "/E", $FilePath, $tempDir) -Wait -PassThru -NoNewWindow
+              if ($extrac32Process.ExitCode -eq 0) {
                 $extractSuccess = $true
-                Write-Host "  Extraction successful with expand.exe" -ForegroundColor Green
+                Write-Host "  Extraction successful with extrac32.exe" -ForegroundColor Green
               }
               
-              # Method 2: Try extrac32.exe if expand failed
+              # Method 2: Try expand.exe if extrac32.exe failed
               if (-not $extractSuccess) {
-                Write-Host "  Trying alternative extraction with extrac32.exe..." -ForegroundColor Gray
-                $extrac32Process = Start-Process -FilePath 'extrac32.exe' -ArgumentList @("/Y", "/E", $FilePath, $tempDir) -Wait -PassThru -NoNewWindow
-                if ($extrac32Process.ExitCode -eq 0) {
+                Write-Host "  extrac32.exe failed, trying expand.exe..." -ForegroundColor Yellow
+                $expandProcess = Start-Process -FilePath 'expand.exe' -ArgumentList @("-F:*", $FilePath, $tempDir, "-R") -Wait -PassThru -NoNewWindow
+                if ($expandProcess.ExitCode -eq 0) {
                   $extractSuccess = $true
-                  Write-Host "  Extraction successful with extrac32.exe" -ForegroundColor Green
+                  Write-Host "  Extraction successful with expand.exe" -ForegroundColor Green
                 }
               }
               
