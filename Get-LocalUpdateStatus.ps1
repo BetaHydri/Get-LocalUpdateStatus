@@ -254,10 +254,10 @@ function Invoke-UpdateInstallation {
             
             # Check if this is a SCOM-related update and prioritize .msp files
             $isSCOMUpdate = ($Title -like "*SCOM*") -or 
-                           ($Title -like "*System Center*") -or
-                           ($Title -like "*Operations Manager*") -or
-                           ($fileName -like "*scom*") -or
-                           ($fileName -like "*mom*")
+            ($Title -like "*System Center*") -or
+            ($Title -like "*Operations Manager*") -or
+            ($fileName -like "*scom*") -or
+            ($fileName -like "*mom*")
             
             # For SCOM updates, check .msp files first
             if ($isSCOMUpdate) {
@@ -486,9 +486,9 @@ function Invoke-UpdateInstallation {
             else {
               # Check if this looks like a SCOM-related update for enhanced error messaging
               $isSCOMRelated = ($Title -like "*SCOM*") -or 
-                              ($Title -like "*System Center*") -or
-                              ($Title -like "*Operations Manager*") -or
-                              ($fileName -like "*scom*")
+              ($Title -like "*System Center*") -or
+              ($Title -like "*Operations Manager*") -or
+              ($fileName -like "*scom*")
               
               Write-Host "  No installable content found in extracted .cab file: $fileName" -ForegroundColor Red
               
