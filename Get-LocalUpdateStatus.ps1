@@ -274,290 +274,290 @@ function Invoke-UpdateInstallation {
                 Write-Host "  Found $($msiFiles.Count) .msi file(s), attempting installation..." -ForegroundColor Cyan
                 foreach ($msiFile in $msiFiles) {
                   Write-Host "  Installing .msi file: $($msiFile.Name)" -ForegroundColor Gray
-                    $msiArgs = @(
-                      '/i'
-                      $msiFile.FullName
+                  $msiArgs = @(
+                    '/i'
+                    $msiFile.FullName
+                    '/quiet'
+                    '/norestart'
+                    'REBOOT=ReallySuppress'
+                  )
+                    
+                  $msiProcess = Start-Process -FilePath 'msiexec.exe' -ArgumentList $msiArgs -Wait -PassThru -NoNewWindow
+                  if ($msiProcess.ExitCode -eq 0) {
+                    $installationSuccess = $true
+                    Write-Host "  Installation successful via extracted .msi: $fileName" -ForegroundColor Green
+                    break
+                  }
+                  elseif ($msiProcess.ExitCode -eq 3010) {
+                    $installationSuccess = $true
+                    Write-Host "  Installation successful via extracted .msi (restart required): $fileName" -ForegroundColor Yellow
+                    break
+                  }
+                  elseif ($msiProcess.ExitCode -eq 1638) {
+                    $installationSuccess = $true
+                    Write-Host "  Installation skipped: Product already installed - $fileName" -ForegroundColor Yellow
+                    break
+                  }
+                  else {
+                    Write-Host "  .msi installation failed (Exit code: $($msiProcess.ExitCode)): $($msiFile.Name)" -ForegroundColor Red
+                  }
+                }
+              }
+                
+              # Look for .msp files (Microsoft Patch files) if .msi installation failed
+              if (-not $installationSuccess) {
+                $mspFiles = Get-ChildItem -Path $tempDir -Filter "*.msp" -Recurse
+                if ($mspFiles) {
+                  Write-Host "  Found $($mspFiles.Count) .msp file(s), attempting installation..." -ForegroundColor Cyan
+                  foreach ($mspFile in $mspFiles) {
+                    Write-Host "  Found extracted .msp file, installing with msiexec..." -ForegroundColor Gray
+                    $mspArgs = @(
+                      '/p'
+                      $mspFile.FullName
                       '/quiet'
                       '/norestart'
                       'REBOOT=ReallySuppress'
                     )
-                    
-                    $msiProcess = Start-Process -FilePath 'msiexec.exe' -ArgumentList $msiArgs -Wait -PassThru -NoNewWindow
-                    if ($msiProcess.ExitCode -eq 0) {
+                      
+                    $mspProcess = Start-Process -FilePath 'msiexec.exe' -ArgumentList $mspArgs -Wait -PassThru -NoNewWindow
+                    if ($mspProcess.ExitCode -eq 0) {
                       $installationSuccess = $true
-                      Write-Host "  Installation successful via extracted .msi: $fileName" -ForegroundColor Green
+                      Write-Host "  Installation successful via extracted .msp: $fileName" -ForegroundColor Green
                       break
                     }
-                    elseif ($msiProcess.ExitCode -eq 3010) {
+                    elseif ($mspProcess.ExitCode -eq 3010) {
                       $installationSuccess = $true
-                      Write-Host "  Installation successful via extracted .msi (restart required): $fileName" -ForegroundColor Yellow
+                      Write-Host "  Installation successful via extracted .msp (restart required): $fileName" -ForegroundColor Yellow
                       break
                     }
-                    elseif ($msiProcess.ExitCode -eq 1638) {
+                    elseif ($mspProcess.ExitCode -eq 1638) {
                       $installationSuccess = $true
-                      Write-Host "  Installation skipped: Product already installed - $fileName" -ForegroundColor Yellow
+                      Write-Host "  Installation skipped: Patch already applied - $fileName" -ForegroundColor Yellow
                       break
                     }
                     else {
-                      Write-Host "  .msi installation failed (Exit code: $($msiProcess.ExitCode)): $($msiFile.Name)" -ForegroundColor Red
+                      Write-Host "  .msp installation failed (Exit code: $($mspProcess.ExitCode)): $($mspFile.Name)" -ForegroundColor Red
                     }
                   }
                 }
-                
-                # Look for .msp files (Microsoft Patch files) if .msi installation failed
-                if (-not $installationSuccess) {
-                  $mspFiles = Get-ChildItem -Path $tempDir -Filter "*.msp" -Recurse
-                  if ($mspFiles) {
-                    Write-Host "  Found $($mspFiles.Count) .msp file(s), attempting installation..." -ForegroundColor Cyan
-                    foreach ($mspFile in $mspFiles) {
-                      Write-Host "  Found extracted .msp file, installing with msiexec..." -ForegroundColor Gray
-                      $mspArgs = @(
-                        '/p'
-                        $mspFile.FullName
-                        '/quiet'
-                        '/norestart'
-                        'REBOOT=ReallySuppress'
-                      )
-                      
-                      $mspProcess = Start-Process -FilePath 'msiexec.exe' -ArgumentList $mspArgs -Wait -PassThru -NoNewWindow
-                      if ($mspProcess.ExitCode -eq 0) {
-                        $installationSuccess = $true
-                        Write-Host "  Installation successful via extracted .msp: $fileName" -ForegroundColor Green
-                        break
-                      }
-                      elseif ($mspProcess.ExitCode -eq 3010) {
-                        $installationSuccess = $true
-                        Write-Host "  Installation successful via extracted .msp (restart required): $fileName" -ForegroundColor Yellow
-                        break
-                      }
-                      elseif ($mspProcess.ExitCode -eq 1638) {
-                        $installationSuccess = $true
-                        Write-Host "  Installation skipped: Patch already applied - $fileName" -ForegroundColor Yellow
-                        break
-                      }
-                      else {
-                        Write-Host "  .msp installation failed (Exit code: $($mspProcess.ExitCode)): $($mspFile.Name)" -ForegroundColor Red
-                      }
-                    }
-                  }
-                }
-              }
-              
-              Remove-Item -Path $tempDir -Recurse -Force -ErrorAction SilentlyContinue
-              
-              if ($installationSuccess) {
-                return $true
-              }
-              else {
-                Write-Host "  No installable content found in extracted .cab file: $fileName" -ForegroundColor Red
-                return $false
               }
             }
-            
+              
             Remove-Item -Path $tempDir -Recurse -Force -ErrorAction SilentlyContinue
-            Write-Host "  Alternative installation methods failed: $fileName" -ForegroundColor Red
-            return $false
+              
+            if ($installationSuccess) {
+              return $true
+            }
+            else {
+              Write-Host "  No installable content found in extracted .cab file: $fileName" -ForegroundColor Red
+              return $false
+            }
           }
-          catch {
-            Write-Host "  Alternative installation failed with error: $($_.Exception.Message)" -ForegroundColor Red
-            return $false
-          }
-        }
-        elseif ($process.ExitCode -eq 50) {
-          Write-Host "  Installation skipped: Package not applicable to this system - $fileName" -ForegroundColor Yellow
-          return $true
-        }
-        elseif ($process.ExitCode -eq 87) {
-          Write-Host "  Installation failed: Invalid parameter - $fileName (Exit code: 87)" -ForegroundColor Red
+            
+          Remove-Item -Path $tempDir -Recurse -Force -ErrorAction SilentlyContinue
+          Write-Host "  Alternative installation methods failed: $fileName" -ForegroundColor Red
           return $false
         }
-        elseif ($process.ExitCode -eq 1460) {
-          Write-Host "  Installation failed: Package already installed - $fileName" -ForegroundColor Yellow
-          return $true
-        }
-        else {
-          Write-Host "  Installation failed: $fileName (Exit code: $($process.ExitCode))" -ForegroundColor Red
+        catch {
+          Write-Host "  Alternative installation failed with error: $($_.Exception.Message)" -ForegroundColor Red
           return $false
         }
       }
-      
-      '.msu' {
-        # Use WUSA for .msu files
-        Write-Host "  Using WUSA for .msu installation..." -ForegroundColor Gray
-        $wusaArgs = @(
-          "$FilePath"
-          '/quiet'
-          '/norestart'
-        )
-        
-        $process = Start-Process -FilePath 'wusa.exe' -ArgumentList $wusaArgs -Wait -PassThru -NoNewWindow
-        
-        if ($process.ExitCode -eq 0) {
-          Write-Host "  Installation successful: $fileName" -ForegroundColor Green
-          return $true
-        }
-        elseif ($process.ExitCode -eq 3010) {
-          Write-Host "  Installation successful (restart required): $fileName" -ForegroundColor Yellow
-          return $true
-        }
-        elseif ($process.ExitCode -eq -2145124329) {
-          Write-Host "  Installation skipped: Update already installed - $fileName" -ForegroundColor Yellow
-          return $true
-        }
-        else {
-          Write-Host "  Installation failed: $fileName (Exit code: $($process.ExitCode))" -ForegroundColor Red
-          return $false
-        }
+      elseif ($process.ExitCode -eq 50) {
+        Write-Host "  Installation skipped: Package not applicable to this system - $fileName" -ForegroundColor Yellow
+        return $true
       }
-      
-      '.exe' {
-        # Use direct execution for .exe files with silent installation switches
-        Write-Host "  Using silent execution for .exe installation..." -ForegroundColor Gray
-        
-        # Common silent switches for Microsoft executable updates
-        $exeArgs = @()
-        
-        # Try to determine appropriate silent switches based on filename/title
-        if ($fileName -match "malicious|removal|tool|msrt" -or $Title -match "Malicious Software Removal Tool") {
-          # Windows Malicious Software Removal Tool uses /Q
-          $exeArgs = @('/Q')
-          Write-Host "  Detected Malicious Software Removal Tool - using /Q switch" -ForegroundColor Gray
-        }
-        elseif ($fileName -match "defender|antimalware" -or $Title -match "Defender|Antimalware") {
-          # Windows Defender updates often use /q
-          $exeArgs = @('/q')
-          Write-Host "  Detected Defender/Antimalware update - using /q switch" -ForegroundColor Gray
-        }
-        else {
-          # Generic Microsoft executable updates - try common silent switches
-          $exeArgs = @('/quiet')
-          Write-Host "  Using generic silent switch: /quiet" -ForegroundColor Gray
-        }
-        
-        $process = Start-Process -FilePath $FilePath -ArgumentList $exeArgs -Wait -PassThru -NoNewWindow
-        
-        if ($process.ExitCode -eq 0) {
-          Write-Host "  Installation successful: $fileName" -ForegroundColor Green
-          return $true
-        }
-        elseif ($process.ExitCode -eq 3010) {
-          Write-Host "  Installation successful (restart required): $fileName" -ForegroundColor Yellow
-          return $true
-        }
-        elseif ($process.ExitCode -eq 1) {
-          Write-Host "  Installation completed with warnings: $fileName" -ForegroundColor Yellow
-          return $true
-        }
-        else {
-          Write-Host "  Installation failed: $fileName (Exit code: $($process.ExitCode))" -ForegroundColor Red
-          Write-Host "  Note: Some .exe files may require specific switches or manual installation" -ForegroundColor Gray
-          return $false
-        }
+      elseif ($process.ExitCode -eq 87) {
+        Write-Host "  Installation failed: Invalid parameter - $fileName (Exit code: 87)" -ForegroundColor Red
+        return $false
       }
-      
-      '.msi' {
-        # Use msiexec for .msi files
-        Write-Host "  Using msiexec for .msi installation..." -ForegroundColor Gray
-        $msiArgs = @(
-          '/i'
-          $FilePath
-          '/quiet'
-          '/norestart'
-          'REBOOT=ReallySuppress'
-        )
-        
-        $process = Start-Process -FilePath 'msiexec.exe' -ArgumentList $msiArgs -Wait -PassThru -NoNewWindow
-        
-        if ($process.ExitCode -eq 0) {
-          Write-Host "  Installation successful: $fileName" -ForegroundColor Green
-          return $true
-        }
-        elseif ($process.ExitCode -eq 3010) {
-          Write-Host "  Installation successful (restart required): $fileName" -ForegroundColor Yellow
-          return $true
-        }
-        elseif ($process.ExitCode -eq 1638) {
-          Write-Host "  Installation skipped: Product already installed - $fileName" -ForegroundColor Yellow
-          return $true
-        }
-        elseif ($process.ExitCode -eq 1605) {
-          Write-Host "  Installation failed: This action is only valid for products that are currently installed - $fileName" -ForegroundColor Red
-          return $false
-        }
-        elseif ($process.ExitCode -eq 1619) {
-          Write-Host "  Installation failed: Package could not be opened - $fileName" -ForegroundColor Red
-          return $false
-        }
-        elseif ($process.ExitCode -eq 1633) {
-          Write-Host "  Installation failed: Platform not supported - $fileName" -ForegroundColor Red
-          return $false
-        }
-        else {
-          Write-Host "  Installation failed: $fileName (Exit code: $($process.ExitCode))" -ForegroundColor Red
-          Write-Host "  Note: MSI error codes can indicate specific installation issues" -ForegroundColor Gray
-          return $false
-        }
+      elseif ($process.ExitCode -eq 1460) {
+        Write-Host "  Installation failed: Package already installed - $fileName" -ForegroundColor Yellow
+        return $true
       }
-      
-      '.msp' {
-        # Use msiexec for .msp files (Microsoft Patch files)
-        Write-Host "  Using msiexec for .msp patch installation..." -ForegroundColor Gray
-        $mspArgs = @(
-          '/p'
-          $FilePath
-          '/quiet'
-          '/norestart'
-          'REBOOT=ReallySuppress'
-        )
-        
-        $process = Start-Process -FilePath 'msiexec.exe' -ArgumentList $mspArgs -Wait -PassThru -NoNewWindow
-        
-        if ($process.ExitCode -eq 0) {
-          Write-Host "  Installation successful: $fileName" -ForegroundColor Green
-          return $true
-        }
-        elseif ($process.ExitCode -eq 3010) {
-          Write-Host "  Installation successful (restart required): $fileName" -ForegroundColor Yellow
-          return $true
-        }
-        elseif ($process.ExitCode -eq 1638) {
-          Write-Host "  Installation skipped: Patch already applied - $fileName" -ForegroundColor Yellow
-          return $true
-        }
-        elseif ($process.ExitCode -eq 1605) {
-          Write-Host "  Installation failed: No products found to patch - $fileName" -ForegroundColor Red
-          return $false
-        }
-        elseif ($process.ExitCode -eq 1619) {
-          Write-Host "  Installation failed: Package could not be opened - $fileName" -ForegroundColor Red
-          return $false
-        }
-        elseif ($process.ExitCode -eq 1633) {
-          Write-Host "  Installation failed: Platform not supported - $fileName" -ForegroundColor Red
-          return $false
-        }
-        elseif ($process.ExitCode -eq 1636) {
-          Write-Host "  Installation failed: Patch package cannot be opened - $fileName" -ForegroundColor Red
-          return $false
-        }
-        else {
-          Write-Host "  Installation failed: $fileName (Exit code: $($process.ExitCode))" -ForegroundColor Red
-          Write-Host "  Note: MSP error codes indicate patch-specific installation issues" -ForegroundColor Gray
-          return $false
-        }
-      }
-      
-      default {
-        Write-Host "  Installation failed: Unsupported file type '$fileExtension' for $fileName" -ForegroundColor Red
-        Write-Host "  Supported types: .cab (DISM), .msu (WUSA), .msi (msiexec), .msp (msiexec), .exe (Silent)" -ForegroundColor Gray
+      else {
+        Write-Host "  Installation failed: $fileName (Exit code: $($process.ExitCode))" -ForegroundColor Red
         return $false
       }
     }
+      
+    '.msu' {
+      # Use WUSA for .msu files
+      Write-Host "  Using WUSA for .msu installation..." -ForegroundColor Gray
+      $wusaArgs = @(
+        "$FilePath"
+        '/quiet'
+        '/norestart'
+      )
+        
+      $process = Start-Process -FilePath 'wusa.exe' -ArgumentList $wusaArgs -Wait -PassThru -NoNewWindow
+        
+      if ($process.ExitCode -eq 0) {
+        Write-Host "  Installation successful: $fileName" -ForegroundColor Green
+        return $true
+      }
+      elseif ($process.ExitCode -eq 3010) {
+        Write-Host "  Installation successful (restart required): $fileName" -ForegroundColor Yellow
+        return $true
+      }
+      elseif ($process.ExitCode -eq -2145124329) {
+        Write-Host "  Installation skipped: Update already installed - $fileName" -ForegroundColor Yellow
+        return $true
+      }
+      else {
+        Write-Host "  Installation failed: $fileName (Exit code: $($process.ExitCode))" -ForegroundColor Red
+        return $false
+      }
+    }
+      
+    '.exe' {
+      # Use direct execution for .exe files with silent installation switches
+      Write-Host "  Using silent execution for .exe installation..." -ForegroundColor Gray
+        
+      # Common silent switches for Microsoft executable updates
+      $exeArgs = @()
+        
+      # Try to determine appropriate silent switches based on filename/title
+      if ($fileName -match "malicious|removal|tool|msrt" -or $Title -match "Malicious Software Removal Tool") {
+        # Windows Malicious Software Removal Tool uses /Q
+        $exeArgs = @('/Q')
+        Write-Host "  Detected Malicious Software Removal Tool - using /Q switch" -ForegroundColor Gray
+      }
+      elseif ($fileName -match "defender|antimalware" -or $Title -match "Defender|Antimalware") {
+        # Windows Defender updates often use /q
+        $exeArgs = @('/q')
+        Write-Host "  Detected Defender/Antimalware update - using /q switch" -ForegroundColor Gray
+      }
+      else {
+        # Generic Microsoft executable updates - try common silent switches
+        $exeArgs = @('/quiet')
+        Write-Host "  Using generic silent switch: /quiet" -ForegroundColor Gray
+      }
+        
+      $process = Start-Process -FilePath $FilePath -ArgumentList $exeArgs -Wait -PassThru -NoNewWindow
+        
+      if ($process.ExitCode -eq 0) {
+        Write-Host "  Installation successful: $fileName" -ForegroundColor Green
+        return $true
+      }
+      elseif ($process.ExitCode -eq 3010) {
+        Write-Host "  Installation successful (restart required): $fileName" -ForegroundColor Yellow
+        return $true
+      }
+      elseif ($process.ExitCode -eq 1) {
+        Write-Host "  Installation completed with warnings: $fileName" -ForegroundColor Yellow
+        return $true
+      }
+      else {
+        Write-Host "  Installation failed: $fileName (Exit code: $($process.ExitCode))" -ForegroundColor Red
+        Write-Host "  Note: Some .exe files may require specific switches or manual installation" -ForegroundColor Gray
+        return $false
+      }
+    }
+      
+    '.msi' {
+      # Use msiexec for .msi files
+      Write-Host "  Using msiexec for .msi installation..." -ForegroundColor Gray
+      $msiArgs = @(
+        '/i'
+        $FilePath
+        '/quiet'
+        '/norestart'
+        'REBOOT=ReallySuppress'
+      )
+        
+      $process = Start-Process -FilePath 'msiexec.exe' -ArgumentList $msiArgs -Wait -PassThru -NoNewWindow
+        
+      if ($process.ExitCode -eq 0) {
+        Write-Host "  Installation successful: $fileName" -ForegroundColor Green
+        return $true
+      }
+      elseif ($process.ExitCode -eq 3010) {
+        Write-Host "  Installation successful (restart required): $fileName" -ForegroundColor Yellow
+        return $true
+      }
+      elseif ($process.ExitCode -eq 1638) {
+        Write-Host "  Installation skipped: Product already installed - $fileName" -ForegroundColor Yellow
+        return $true
+      }
+      elseif ($process.ExitCode -eq 1605) {
+        Write-Host "  Installation failed: This action is only valid for products that are currently installed - $fileName" -ForegroundColor Red
+        return $false
+      }
+      elseif ($process.ExitCode -eq 1619) {
+        Write-Host "  Installation failed: Package could not be opened - $fileName" -ForegroundColor Red
+        return $false
+      }
+      elseif ($process.ExitCode -eq 1633) {
+        Write-Host "  Installation failed: Platform not supported - $fileName" -ForegroundColor Red
+        return $false
+      }
+      else {
+        Write-Host "  Installation failed: $fileName (Exit code: $($process.ExitCode))" -ForegroundColor Red
+        Write-Host "  Note: MSI error codes can indicate specific installation issues" -ForegroundColor Gray
+        return $false
+      }
+    }
+      
+    '.msp' {
+      # Use msiexec for .msp files (Microsoft Patch files)
+      Write-Host "  Using msiexec for .msp patch installation..." -ForegroundColor Gray
+      $mspArgs = @(
+        '/p'
+        $FilePath
+        '/quiet'
+        '/norestart'
+        'REBOOT=ReallySuppress'
+      )
+        
+      $process = Start-Process -FilePath 'msiexec.exe' -ArgumentList $mspArgs -Wait -PassThru -NoNewWindow
+        
+      if ($process.ExitCode -eq 0) {
+        Write-Host "  Installation successful: $fileName" -ForegroundColor Green
+        return $true
+      }
+      elseif ($process.ExitCode -eq 3010) {
+        Write-Host "  Installation successful (restart required): $fileName" -ForegroundColor Yellow
+        return $true
+      }
+      elseif ($process.ExitCode -eq 1638) {
+        Write-Host "  Installation skipped: Patch already applied - $fileName" -ForegroundColor Yellow
+        return $true
+      }
+      elseif ($process.ExitCode -eq 1605) {
+        Write-Host "  Installation failed: No products found to patch - $fileName" -ForegroundColor Red
+        return $false
+      }
+      elseif ($process.ExitCode -eq 1619) {
+        Write-Host "  Installation failed: Package could not be opened - $fileName" -ForegroundColor Red
+        return $false
+      }
+      elseif ($process.ExitCode -eq 1633) {
+        Write-Host "  Installation failed: Platform not supported - $fileName" -ForegroundColor Red
+        return $false
+      }
+      elseif ($process.ExitCode -eq 1636) {
+        Write-Host "  Installation failed: Patch package cannot be opened - $fileName" -ForegroundColor Red
+        return $false
+      }
+      else {
+        Write-Host "  Installation failed: $fileName (Exit code: $($process.ExitCode))" -ForegroundColor Red
+        Write-Host "  Note: MSP error codes indicate patch-specific installation issues" -ForegroundColor Gray
+        return $false
+      }
+    }
+      
+    default {
+      Write-Host "  Installation failed: Unsupported file type '$fileExtension' for $fileName" -ForegroundColor Red
+      Write-Host "  Supported types: .cab (DISM), .msu (WUSA), .msi (msiexec), .msp (msiexec), .exe (Silent)" -ForegroundColor Gray
+      return $false
+    }
   }
-  catch {
-    Write-Host "  Installation failed: $($_.Exception.Message)" -ForegroundColor Red
-    return $false
-  }
+}
+catch {
+  Write-Host "  Installation failed: $($_.Exception.Message)" -ForegroundColor Red
+  return $false
+}
 }
 
 # Helper function to download updates with enhanced progress
